@@ -9,7 +9,7 @@
 
 {#if $currentTrack}
 <div class="mini-player">
-  <div class="mini-progress" style="width: {progress}%"></div>
+  <div class="mini-progress-bar"><div class="mini-progress" style="width: {progress}%"></div></div>
   <div class="mini-content">
     {#if $currentTrack.coverUrl}
       <img src={$currentTrack.coverUrl} alt="" class="mini-cover" />
@@ -61,17 +61,24 @@
     bottom: var(--bottom-nav-height);
     left: 0;
     right: 0;
-    z-index: 50;
+    z-index: 200;
     background: var(--bg-elevated);
     border-radius: 8px 8px 0 0;
-    overflow: hidden;
+    overflow: visible;
     margin: 0 8px;
   }
 
-  .mini-progress {
+  .mini-progress-bar {
     position: absolute;
     top: 0;
     left: 0;
+    right: 0;
+    height: 2px;
+    overflow: hidden;
+    border-radius: 8px 8px 0 0;
+  }
+
+  .mini-progress {
     height: 2px;
     background: var(--accent);
     transition: width 0.2s linear;

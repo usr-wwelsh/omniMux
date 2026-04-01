@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { api, type DeviceSession } from '$lib/api';
-import { currentTrack, isPlaying, currentTime, playTrack } from './player';
+import { currentTrack, isPlaying, currentTime, playTrack, seek } from './player';
 import { streamUrl } from '$lib/subsonic';
 
 export { type DeviceSession };
@@ -68,8 +68,8 @@ export function startDeviceSync() {
   myDeviceId = getOrCreateDeviceId();
   sendHeartbeat();
   pollDevices();
-  heartbeatTimer = setInterval(sendHeartbeat, 10_000);
-  pollTimer = setInterval(pollDevices, 10_000);
+  heartbeatTimer = setInterval(sendHeartbeat, 5_000);
+  pollTimer = setInterval(pollDevices, 5_000);
 }
 
 export function stopDeviceSync() {
@@ -80,6 +80,7 @@ export function stopDeviceSync() {
 export async function listenHere(session: DeviceSession) {
   if (!session.track) return;
   const sUrl = await streamUrl(session.track.id);
+  const startAt = session.current_time ?? 0;
   playTrack({
     id: session.track.id,
     title: session.track.title,
@@ -90,4 +91,7 @@ export async function listenHere(session: DeviceSession) {
     streamUrl: sUrl,
     coverUrl: session.track.cover_url ?? undefined,
   });
+  if (startAt > 1) {
+    seek(startAt);
+  }
 }

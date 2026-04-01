@@ -5,6 +5,8 @@
 
 A self-hosted music server that lets you search YouTube, cache tracks to your library, and stream everything through a Spotify-like PWA. Built on top of [Navidrome](https://www.navidrome.org/) with a FastAPI middleware layer and a SvelteKit frontend.
 
+![omniMux demo](demo.png)
+
 ## Features
 
 - **YouTube search** — find tracks and cache them locally; Topic channel results are ranked first

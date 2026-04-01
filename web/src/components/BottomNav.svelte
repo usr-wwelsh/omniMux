@@ -31,7 +31,7 @@
     bottom: 0;
     left: 0;
     right: 0;
-    z-index: 50;
+    z-index: 200;
     display: flex;
     background: var(--bg-secondary);
     border-top: 1px solid var(--border);

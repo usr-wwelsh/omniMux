@@ -44,20 +44,29 @@
   .popover-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 90;
+    z-index: 300;
   }
 
   .devices-popover {
-    position: absolute;
-    bottom: calc(100% + 8px);
-    right: 0;
+    position: fixed;
+    right: 16px;
+    bottom: calc(var(--player-height) + 8px);
     width: 280px;
     background: var(--bg-elevated);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 12px;
-    z-index: 100;
+    z-index: 301;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  }
+
+  @media (max-width: 768px) {
+    .devices-popover {
+      right: 8px;
+      left: 8px;
+      width: auto;
+      bottom: calc(var(--bottom-nav-height) + var(--mini-player-height) + 8px);
+    }
   }
 
   .popover-header {
