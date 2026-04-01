@@ -9,7 +9,7 @@ services:
     environment:
       ND_SCANSCHEDULE: "@every 1m"
       ND_LOGLEVEL: info
-      ND_BASEURL: "/navidrome"
+      ND_BASEURL: ""
     restart: unless-stopped
 
   omnimux-api:
