@@ -101,7 +101,6 @@
       bind:value={query}
       oninput={handleInput}
       class="search-input"
-      autofocus
     />
   </div>
 
