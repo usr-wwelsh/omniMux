@@ -1,7 +1,7 @@
 import { get } from 'svelte/store';
 import { auth, logout } from './auth';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8800';
+const API_BASE = '';
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const { token } = get(auth);
