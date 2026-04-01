@@ -158,7 +158,9 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
     )
 
     if playlist_name:
-        await _add_to_navidrome_playlist(title, artist, playlist_name, username, password)
+        tagged_title = info.get("title", title)
+        tagged_artist = info.get("artist", info.get("channel", artist))
+        await _add_to_navidrome_playlist(tagged_title, tagged_artist, playlist_name, username, password)
 
 
 def _yt_download(url: str, opts: dict) -> dict:

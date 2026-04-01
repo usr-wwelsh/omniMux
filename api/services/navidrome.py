@@ -51,11 +51,19 @@ async def search_song(title: str, artist: str, username: str, password: str) -> 
         if sr.get("status") != "ok":
             return None
         songs = sr.get("searchResult3", {}).get("song", [])
+        if not songs:
+            return None
         artist_lower = artist.lower()
+        # Prefer exact artist match, fall back to first result
         for song in songs:
             if song.get("artist", "").lower() == artist_lower:
                 return song["id"]
-        return songs[0]["id"] if songs else None
+        # Fuzzy: artist name contains or is contained by the target
+        for song in songs:
+            song_artist = song.get("artist", "").lower()
+            if artist_lower in song_artist or song_artist in artist_lower:
+                return song["id"]
+        return songs[0]["id"]
 
 
 async def get_or_create_playlist(name: str, username: str, password: str) -> str | None:

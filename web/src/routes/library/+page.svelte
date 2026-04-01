@@ -1,24 +1,26 @@
 <script lang="ts">
-  import { subsonic, coverArtUrl, type Artist } from '$lib/subsonic';
+  import { subsonic, type Artist, type Album } from '$lib/subsonic';
+  import AlbumCard from '../../components/AlbumCard.svelte';
 
+  let albums = $state<Album[]>([]);
   let artists = $state<(Artist & { coverUrl?: string })[]>([]);
   let loading = $state(true);
 
   $effect(() => {
-    loadArtists();
+    load();
   });
 
-  async function loadArtists() {
+  async function load() {
     loading = true;
     try {
-      const raw = await subsonic.getArtists();
-      artists = await Promise.all(
-        raw.map(async (a) => ({
-          ...a,
-          coverUrl: a.coverArt ? await coverArtUrl(a.coverArt, 300) : undefined,
-        }))
-      );
+      const [rawAlbums, rawArtists] = await Promise.all([
+        subsonic.getAllAlbums(),
+        subsonic.getArtists(),
+      ]);
+      albums = rawAlbums;
+      artists = rawArtists;
     } catch {
+      albums = [];
       artists = [];
     } finally {
       loading = false;
@@ -31,24 +33,36 @@
 
   {#if loading}
     <p class="loading-text">Loading...</p>
-  {:else if artists.length === 0}
-    <p class="empty-text">No artists in your library yet. Cache some music from YouTube!</p>
+  {:else if albums.length === 0 && artists.length === 0}
+    <p class="empty-text">No music in your library yet. Cache some music from YouTube!</p>
   {:else}
-    <div class="artist-grid">
-      {#each artists as artist}
-        <a href="/library/artist/{artist.id}" class="artist-card">
-          {#if artist.coverUrl}
-            <img src={artist.coverUrl} alt={artist.name} class="artist-img" />
-          {:else}
-            <div class="artist-img placeholder">
-              <svg viewBox="0 0 24 24" width="40" height="40" fill="var(--text-subdued)"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-            </div>
-          {/if}
-          <div class="artist-name">{artist.name}</div>
-          <div class="artist-albums">{artist.albumCount} album{artist.albumCount !== 1 ? 's' : ''}</div>
-        </a>
-      {/each}
-    </div>
+    {#if albums.length > 0}
+      <section class="section">
+        <h2 class="section-title">Albums</h2>
+        <div class="album-grid">
+          {#each albums as album}
+            <AlbumCard {album} />
+          {/each}
+        </div>
+      </section>
+    {/if}
+
+    {#if artists.length > 0}
+      <section class="section">
+        <h2 class="section-title">Artists</h2>
+        <div class="artist-grid">
+          {#each artists as artist}
+            <a href="/library/artist/{artist.id}" class="artist-card">
+              <div class="artist-img placeholder">
+                <svg viewBox="0 0 24 24" width="40" height="40" fill="var(--text-subdued)"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+              </div>
+              <div class="artist-name">{artist.name}</div>
+              <div class="artist-albums">{artist.albumCount} album{artist.albumCount !== 1 ? 's' : ''}</div>
+            </a>
+          {/each}
+        </div>
+      </section>
+    {/if}
   {/if}
 </div>
 
@@ -66,6 +80,22 @@
   .loading-text, .empty-text {
     color: var(--text-secondary);
     font-size: 14px;
+  }
+
+  .section {
+    margin-bottom: 40px;
+  }
+
+  .section-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 16px;
+  }
+
+  .album-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 16px;
   }
 
   .artist-grid {
