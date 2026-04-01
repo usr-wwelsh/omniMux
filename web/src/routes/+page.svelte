@@ -3,7 +3,7 @@
   import AlbumCard from '../components/AlbumCard.svelte';
   import TrackList from '../components/TrackList.svelte';
 
-  let recentAlbums = $state<Album[]>([]);
+  let randomAlbums = $state<Album[]>([]);
   let randomSongs = $state<Song[]>([]);
   let loading = $state(true);
 
@@ -15,10 +15,10 @@
     loading = true;
     try {
       const [albums, songs] = await Promise.all([
-        subsonic.getRecentAlbums(12),
+        subsonic.getRandomAlbums(12),
         subsonic.getRandomSongs(10),
       ]);
-      recentAlbums = albums;
+      randomAlbums = albums;
       randomSongs = songs;
     } catch {
       // Library may be empty
@@ -34,11 +34,11 @@
   {#if loading}
     <p class="loading-text">Loading...</p>
   {:else}
-    {#if recentAlbums.length > 0}
+    {#if randomAlbums.length > 0}
       <section class="section">
-        <h2 class="section-title">Recently Added</h2>
+        <h2 class="section-title">Albums</h2>
         <div class="album-grid">
-          {#each recentAlbums as album}
+          {#each randomAlbums as album}
             <AlbumCard {album} />
           {/each}
         </div>
@@ -52,7 +52,7 @@
       </section>
     {/if}
 
-    {#if recentAlbums.length === 0 && randomSongs.length === 0}
+    {#if randomAlbums.length === 0 && randomSongs.length === 0}
       <div class="empty-state">
         <svg viewBox="0 0 24 24" width="64" height="64" fill="var(--text-subdued)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
         <h2>Your library is empty</h2>

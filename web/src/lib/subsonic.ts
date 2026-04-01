@@ -215,6 +215,14 @@ export const subsonic = {
     }));
   },
 
+  async getRandomAlbums(count = 12): Promise<Album[]> {
+    const data = await subsonicGet('getAlbumList2.view', { type: 'random', size: count.toString() });
+    return (data.albumList2?.album || []).map((al: any) => ({
+      id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
+      coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
+    }));
+  },
+
   async getAllAlbums(): Promise<Album[]> {
     const data = await subsonicGet('getAlbumList2.view', { type: 'alphabeticalByName', size: '500' });
     return (data.albumList2?.album || []).map((al: any) => ({
