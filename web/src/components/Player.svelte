@@ -1,6 +1,7 @@
 <script lang="ts">
   import { currentTrack, isPlaying, currentTime, duration, volume, shuffle, loop, togglePlay, seek, setVolume, playNext, playPrev, toggleShuffle, cycleLoop, formatTime } from '$lib/stores/player';
   import { otherDevices } from '$lib/stores/devices';
+  import { showFullscreenPlayer } from '$lib/stores/ui';
   import DevicesPopover from './DevicesPopover.svelte';
 
   let progressBar: HTMLDivElement;
@@ -27,7 +28,9 @@
 
 {#if $currentTrack}
 <div class="player">
-  <div class="player-track">
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="player-track" onclick={() => showFullscreenPlayer.set(true)}>
     {#if $currentTrack.coverUrl}
       <img src={$currentTrack.coverUrl} alt="" class="player-cover" />
     {:else}
@@ -115,6 +118,11 @@
     gap: 12px;
     flex: 1;
     min-width: 0;
+    cursor: pointer;
+  }
+
+  .player-track:hover .player-title {
+    color: var(--accent);
   }
 
   .player-cover {

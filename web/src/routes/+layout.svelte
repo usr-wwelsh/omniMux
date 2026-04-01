@@ -9,6 +9,8 @@
   import MiniPlayer from '../components/MiniPlayer.svelte';
   import NowPlaying from '../components/NowPlaying.svelte';
   import { startDeviceSync, stopDeviceSync } from '$lib/stores/devices';
+  import { showFullscreenPlayer } from '$lib/stores/ui';
+  import FullscreenPlayer from '../components/FullscreenPlayer.svelte';
   import { onMount } from 'svelte';
 
   let { children } = $props();
@@ -64,6 +66,10 @@
     <BottomNav />
   {:else}
     <Player />
+  {/if}
+
+  {#if $showFullscreenPlayer}
+    <FullscreenPlayer />
   {/if}
 {/if}
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { currentTrack, isPlaying, currentTime, duration, shuffle, loop, togglePlay, playNext, toggleShuffle, cycleLoop, formatTime } from '$lib/stores/player';
   import { otherDevices } from '$lib/stores/devices';
+  import { showFullscreenPlayer } from '$lib/stores/ui';
   import DevicesPopover from './DevicesPopover.svelte';
 
   let progress = $derived($duration > 0 ? ($currentTime / $duration) * 100 : 0);
@@ -11,14 +12,18 @@
 <div class="mini-player">
   <div class="mini-progress-bar"><div class="mini-progress" style="width: {progress}%"></div></div>
   <div class="mini-content">
-    {#if $currentTrack.coverUrl}
-      <img src={$currentTrack.coverUrl} alt="" class="mini-cover" />
-    {:else}
-      <div class="mini-cover placeholder"></div>
-    {/if}
-    <div class="mini-info">
-      <div class="mini-title">{$currentTrack.title}</div>
-      <div class="mini-artist">{$currentTrack.artist}</div>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="mini-track" onclick={() => showFullscreenPlayer.set(true)}>
+      {#if $currentTrack.coverUrl}
+        <img src={$currentTrack.coverUrl} alt="" class="mini-cover" />
+      {:else}
+        <div class="mini-cover placeholder"></div>
+      {/if}
+      <div class="mini-info">
+        <div class="mini-title">{$currentTrack.title}</div>
+        <div class="mini-artist">{$currentTrack.artist}</div>
+      </div>
     </div>
     <button class="mini-play" onclick={togglePlay}>
       {#if $isPlaying}
@@ -88,7 +93,7 @@
     display: flex;
     align-items: center;
     padding: 8px 12px;
-    gap: 10px;
+    gap: 8px;
   }
 
   .mini-cover {
@@ -103,8 +108,16 @@
     background: var(--bg-highlight);
   }
 
-  .mini-info {
+  .mini-track {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     flex: 1;
+    min-width: 0;
+    cursor: pointer;
+  }
+
+  .mini-info {
     min-width: 0;
   }
 
