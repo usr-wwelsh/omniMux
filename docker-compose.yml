@@ -1,0 +1,37 @@
+services:
+  navidrome:
+    image: deluan/navidrome:latest
+    ports:
+      - "4533:4533"
+    volumes:
+      - ./data/navidrome:/data
+      - ./data/music:/music
+    environment:
+      ND_SCANSCHEDULE: 0
+      ND_LOGLEVEL: info
+      ND_BASEURL: ""
+    restart: unless-stopped
+
+  omnimux-api:
+    build: ./api
+    ports:
+      - "8800:8800"
+    volumes:
+      - ./data/music:/music
+      - ./data/omnimux:/data
+    environment:
+      NAVIDROME_URL: http://navidrome:4533
+      MUSIC_DIR: /music
+      DATA_DIR: /data
+      JWT_SECRET: change-me-in-production
+    depends_on:
+      - navidrome
+    restart: unless-stopped
+
+  omnimux-web:
+    build: ./web
+    ports:
+      - "8801:80"
+    depends_on:
+      - omnimux-api
+    restart: unless-stopped
