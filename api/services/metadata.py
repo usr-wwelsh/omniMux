@@ -43,8 +43,10 @@ def _build_metadata(info: dict, mood_result: dict | None) -> dict:
     return meta
 
 
-async def tag_file(file_path: str, info: dict, mood_result: dict | None) -> None:
+async def tag_file(file_path: str, info: dict, mood_result: dict | None, target_album: str | None = None) -> None:
     meta = _build_metadata(info, mood_result)
+    if target_album:
+        meta["album"] = target_album
     thumbnail_url = info.get("thumbnail", "")
     cover_data = await _download_thumbnail(thumbnail_url)
     ext = Path(file_path).suffix.lower()

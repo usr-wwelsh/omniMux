@@ -27,6 +27,7 @@ class Download(Base):
     key: Mapped[str | None] = mapped_column(String(10), nullable=True)
     genre: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    target_album: Mapped[str | None] = mapped_column(String(500), nullable=True)
     playlist_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     navidrome_username: Mapped[str | None] = mapped_column(String(200), nullable=True)
     navidrome_password: Mapped[str | None] = mapped_column(String(500), nullable=True)

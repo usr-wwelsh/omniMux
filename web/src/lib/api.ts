@@ -114,10 +114,10 @@ export const api = {
     return request(`/api/search/youtube/album-tracks?artist=${encodeURIComponent(artist)}&album=${encodeURIComponent(album)}`);
   },
 
-  async startDownload(youtube_url: string, youtube_id: string, title: string, artist: string): Promise<DownloadResponse> {
+  async startDownload(youtube_url: string, youtube_id: string, title: string, artist: string, album?: string): Promise<DownloadResponse> {
     return request('/api/download', {
       method: 'POST',
-      body: JSON.stringify({ youtube_url, youtube_id, title, artist }),
+      body: JSON.stringify({ youtube_url, youtube_id, title, artist, album: album ?? null }),
     });
   },
 

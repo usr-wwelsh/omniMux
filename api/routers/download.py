@@ -27,6 +27,7 @@ class DownloadRequest(BaseModel):
     youtube_id: str
     title: str
     artist: str
+    album: str | None = None
 
 
 class DownloadResponse(BaseModel):
@@ -91,6 +92,7 @@ async def start_download(
         title=body.title,
         artist=body.artist,
         status="queued",
+        target_album=body.album,
         navidrome_username=user.username,
         navidrome_password=user.password,
     )

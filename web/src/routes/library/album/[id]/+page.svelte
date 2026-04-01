@@ -69,7 +69,7 @@
 
   async function cacheTrack(result: YouTubeResult) {
     try {
-      const resp = await api.startDownload(result.url, result.youtube_id, result.title, result.artist);
+      const resp = await api.startDownload(result.url, result.youtube_id, result.title, result.artist, album?.name);
       if (resp.already_cached) {
         cachedIds = new Set([...cachedIds, result.youtube_id]);
       } else {

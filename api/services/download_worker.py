@@ -61,6 +61,7 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
         artist = dl.artist
         youtube_id = dl.youtube_id
         playlist_name = dl.playlist_name
+        target_album = dl.target_album
 
     artist_dir = Path(MUSIC_DIR) / _sanitize(artist)
     artist_dir.mkdir(parents=True, exist_ok=True)
@@ -112,7 +113,7 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
     # Step 3: Tag
     await _update_download(download_id, status="tagging", progress=90)
     try:
-        await tag_file(str(file_path), info, mood_result)
+        await tag_file(str(file_path), info, mood_result, target_album=target_album)
     except Exception as e:
         await _update_download(download_id, status="failed", error=f"Tagging failed: {e}")
         return

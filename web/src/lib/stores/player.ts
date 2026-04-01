@@ -154,6 +154,55 @@ export function addToQueue(track: Track) {
   queue.update((q) => [...q, track]);
 }
 
+export async function addSongToQueue(song: Song) {
+  const track = await songToTrack(song);
+  queue.update((q) => [...q, track]);
+}
+
+export function removeFromQueue(index: number) {
+  const q = get(queue);
+  const idx = get(queueIndex);
+  const newQ = [...q];
+  newQ.splice(index, 1);
+  queue.set(newQ);
+
+  if (newQ.length === 0) {
+    queueIndex.set(-1);
+    isPlaying.set(false);
+  } else if (index === idx) {
+    const next = Math.min(idx, newQ.length - 1);
+    queueIndex.set(next);
+    playTrack(newQ[next]);
+  } else if (index < idx) {
+    queueIndex.set(idx - 1);
+  }
+}
+
+export function reorderQueue(from: number, to: number) {
+  if (from === to) return;
+  const idx = get(queueIndex);
+  const newQ = [...get(queue)];
+  const [item] = newQ.splice(from, 1);
+  newQ.splice(to, 0, item);
+  queue.set(newQ);
+
+  if (idx === from) {
+    queueIndex.set(to);
+  } else if (from < to && idx > from && idx <= to) {
+    queueIndex.set(idx - 1);
+  } else if (from > to && idx >= to && idx < from) {
+    queueIndex.set(idx + 1);
+  }
+}
+
+export function jumpToQueue(index: number) {
+  const q = get(queue);
+  if (index >= 0 && index < q.length) {
+    queueIndex.set(index);
+    playTrack(q[index]);
+  }
+}
+
 export function formatTime(seconds: number): string {
   if (!seconds || isNaN(seconds)) return '0:00';
   const m = Math.floor(seconds / 60);

@@ -3,9 +3,12 @@
     currentTrack, isPlaying, currentTime, duration, volume,
     shuffle, loop, togglePlay, seek, setVolume,
     playNext, playPrev, toggleShuffle, cycleLoop, formatTime,
-    queue, queueIndex,
+    queue,
   } from '$lib/stores/player';
   import { showFullscreenPlayer } from '$lib/stores/ui';
+  import QueuePanel from './QueuePanel.svelte';
+
+  let tab = $state<'playing' | 'queue'>('playing');
 
   let progressBar: HTMLDivElement;
   let volumeBar: HTMLDivElement;
@@ -52,12 +55,19 @@
     <button class="fs-close" onclick={close}>
       <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>
     </button>
-    <span class="fs-label">Now Playing</span>
-    <div style="width: 28px"></div>
+    <div class="fs-tabs">
+      <button class="fs-tab" class:active={tab === 'playing'} onclick={() => tab = 'playing'}>Now Playing</button>
+      <button class="fs-tab" class:active={tab === 'queue'} onclick={() => tab = 'queue'}>Queue {#if $queue.length > 0}<span class="fs-tab-count">{$queue.length}</span>{/if}</button>
+    </div>
+    <div style="width: 36px"></div>
   </div>
 
   {#if $currentTrack}
-  <div class="fs-body">
+  <div class="fs-body" class:queue-view={tab === 'queue'}>
+  {#if tab === 'queue'}
+    <QueuePanel />
+  {:else}
+
     <!-- Album art -->
     <div class="fs-art-wrap">
       {#if $currentTrack.coverUrl}
@@ -131,18 +141,7 @@
       <svg viewBox="0 0 24 24" width="16" height="16" fill="var(--text-subdued)"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
     </div>
 
-    <!-- Queue preview -->
-    {#if $queue.length > 1}
-      <div class="fs-queue">
-        <div class="fs-queue-label">Next up</div>
-        {#each $queue.slice($queueIndex + 1, $queueIndex + 4) as track}
-          <div class="fs-queue-item">
-            <div class="fs-queue-title">{track.title}</div>
-            <div class="fs-queue-artist">{track.artist}</div>
-          </div>
-        {/each}
-      </div>
-    {/if}
+  {/if}
   </div>
   {/if}
 </div>
@@ -353,38 +352,6 @@
     height: 100%;
     background: var(--text-secondary);
     border-radius: 2px;
-  }
-
-  .fs-queue {
-    width: 100%;
-    border-top: 1px solid var(--border);
-    padding-top: 20px;
-  }
-
-  .fs-queue-label {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--text-subdued);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 12px;
-  }
-
-  .fs-queue-item {
-    padding: 8px 0;
-    border-bottom: 1px solid var(--bg-elevated);
-  }
-
-  .fs-queue-title {
-    font-size: 14px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .fs-queue-artist {
-    font-size: 12px;
-    color: var(--text-secondary);
   }
 
   @media (max-width: 768px) {
