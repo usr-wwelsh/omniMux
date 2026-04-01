@@ -1,7 +1,10 @@
 <script lang="ts">
   import { currentTrack, isPlaying, currentTime, duration, shuffle, loop, togglePlay, playNext, toggleShuffle, cycleLoop, formatTime } from '$lib/stores/player';
+  import { otherDevices } from '$lib/stores/devices';
+  import DevicesPopover from './DevicesPopover.svelte';
 
   let progress = $derived($duration > 0 ? ($currentTime / $duration) * 100 : 0);
+  let showDevices = $state(false);
 </script>
 
 {#if $currentTrack}
@@ -37,13 +40,28 @@
         <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
       {/if}
     </button>
+    <div class="mini-devices-wrap">
+      <button class="mini-btn" class:active={$otherDevices.length > 0} onclick={() => showDevices = !showDevices}>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z"/></svg>
+        {#if $otherDevices.length > 0}
+          <span class="mini-device-badge">{$otherDevices.length}</span>
+        {/if}
+      </button>
+      {#if showDevices}
+        <DevicesPopover onclose={() => showDevices = false} />
+      {/if}
+    </div>
   </div>
 </div>
 {/if}
 
 <style>
   .mini-player {
-    position: relative;
+    position: fixed;
+    bottom: var(--bottom-nav-height);
+    left: 0;
+    right: 0;
+    z-index: 50;
     background: var(--bg-elevated);
     border-radius: 8px 8px 0 0;
     overflow: hidden;
@@ -114,5 +132,26 @@
 
   .mini-btn:hover, .mini-btn.active {
     color: var(--accent);
+  }
+
+  .mini-devices-wrap {
+    position: relative;
+    display: flex;
+  }
+
+  .mini-device-badge {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    background: var(--accent);
+    color: #000;
+    font-size: 8px;
+    font-weight: 700;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 </style>

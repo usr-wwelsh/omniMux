@@ -157,7 +157,7 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
     )
 
     if playlist_name:
-        asyncio.create_task(_add_to_navidrome_playlist(title, artist, playlist_name, username, password))
+        await _add_to_navidrome_playlist(title, artist, playlist_name, username, password)
 
 
 def _yt_download(url: str, opts: dict) -> dict:

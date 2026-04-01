@@ -19,11 +19,16 @@ async def init_db():
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Migration: add playlist_name if it doesn't exist yet
-        try:
-            await conn.execute(text("ALTER TABLE downloads ADD COLUMN playlist_name VARCHAR(500)"))
-        except Exception:
-            pass
+        # Migrations: add columns if they don't exist yet
+        for migration in [
+            "ALTER TABLE downloads ADD COLUMN playlist_name VARCHAR(500)",
+            "ALTER TABLE downloads ADD COLUMN navidrome_username VARCHAR(200)",
+            "ALTER TABLE downloads ADD COLUMN navidrome_password VARCHAR(500)",
+        ]:
+            try:
+                await conn.execute(text(migration))
+            except Exception:
+                pass
 
 
 async def get_db() -> AsyncSession:

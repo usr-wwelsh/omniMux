@@ -27,6 +27,11 @@
 
 <style>
   .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
     display: flex;
     background: var(--bg-secondary);
     border-top: 1px solid var(--border);

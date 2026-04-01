@@ -28,6 +28,8 @@ class Download(Base):
     genre: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     playlist_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    navidrome_username: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    navidrome_password: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

@@ -8,6 +8,7 @@
   import Player from '../components/Player.svelte';
   import MiniPlayer from '../components/MiniPlayer.svelte';
   import NowPlaying from '../components/NowPlaying.svelte';
+  import { startDeviceSync, stopDeviceSync } from '$lib/stores/devices';
 
   let { children } = $props();
 
@@ -25,6 +26,13 @@
   $effect(() => {
     if (!$auth.authenticated && page.url.pathname !== '/login') {
       goto('/login');
+    }
+  });
+
+  $effect(() => {
+    if ($auth.authenticated) {
+      startDeviceSync();
+      return () => stopDeviceSync();
     }
   });
 
@@ -66,26 +74,32 @@
   }
 
   .app-shell.mobile {
-    height: calc(100vh - var(--bottom-nav-height) - var(--mini-player-height));
+    height: 100vh;
+    overflow: visible;
     flex-direction: column;
   }
 
   .main-content {
     flex: 1;
     min-width: 0;
+    min-height: 0;
     display: flex;
     flex-direction: column;
   }
 
   .content-scroll {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     padding: 24px;
+    padding-bottom: calc(24px + var(--bottom-nav-height) + var(--mini-player-height));
   }
 
   @media (max-width: 768px) {
     .content-scroll {
       padding: 16px;
+      padding-bottom: calc(16px + var(--bottom-nav-height) + var(--mini-player-height));
     }
   }
 </style>

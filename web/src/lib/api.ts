@@ -69,6 +69,31 @@ export interface PlaylistImportResponse {
   playlist_name: string | null;
 }
 
+export interface DeviceTrackInfo {
+  id: string;
+  title: string;
+  artist: string;
+  album: string;
+  cover_url: string | null;
+  duration: number;
+}
+
+export interface DeviceSession {
+  device_id: string;
+  device_name: string;
+  track: DeviceTrackInfo | null;
+  is_playing: boolean;
+  current_time: number;
+}
+
+export interface DeviceHeartbeat {
+  device_id: string;
+  device_name: string;
+  track: DeviceTrackInfo | null;
+  is_playing: boolean;
+  current_time: number;
+}
+
 export const api = {
   async login(username: string, password: string): Promise<{ token: string; username: string }> {
     return request('/api/auth/login', {
@@ -113,5 +138,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ playlist_url, playlist_name: playlist_name || null }),
     });
+  },
+
+  async deviceHeartbeat(payload: DeviceHeartbeat): Promise<void> {
+    return request('/api/devices/heartbeat', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async getDevices(): Promise<DeviceSession[]> {
+    return request('/api/devices');
   },
 };

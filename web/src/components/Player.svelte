@@ -1,9 +1,12 @@
 <script lang="ts">
   import { currentTrack, isPlaying, currentTime, duration, volume, shuffle, loop, togglePlay, seek, setVolume, playNext, playPrev, toggleShuffle, cycleLoop, formatTime } from '$lib/stores/player';
+  import { otherDevices } from '$lib/stores/devices';
+  import DevicesPopover from './DevicesPopover.svelte';
 
   let progressBar: HTMLDivElement;
   let volumeBar: HTMLDivElement;
   let seeking = false;
+  let showDevices = $state(false);
 
   function handleProgressClick(e: MouseEvent) {
     if (!progressBar) return;
@@ -74,6 +77,17 @@
   </div>
 
   <div class="player-volume">
+    <div class="devices-wrap">
+      <button class="control-btn devices-btn" class:active={$otherDevices.length > 0} onclick={() => showDevices = !showDevices} title="Devices">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z"/></svg>
+        {#if $otherDevices.length > 0}
+          <span class="device-badge">{$otherDevices.length}</span>
+        {/if}
+      </button>
+      {#if showDevices}
+        <DevicesPopover onclose={() => showDevices = false} />
+      {/if}
+    </div>
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <svg viewBox="0 0 24 24" width="18" height="18" fill="var(--text-secondary)"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
@@ -215,6 +229,34 @@
     align-items: center;
     gap: 8px;
     justify-content: flex-end;
+  }
+
+  .devices-wrap {
+    position: relative;
+  }
+
+  .devices-btn {
+    position: relative;
+  }
+
+  .devices-btn.active {
+    color: var(--accent);
+  }
+
+  .device-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    background: var(--accent);
+    color: #000;
+    font-size: 9px;
+    font-weight: 700;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   @media (max-width: 768px) {

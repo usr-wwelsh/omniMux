@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, desc
 
@@ -11,6 +11,15 @@ from services.download_worker import process_download
 from services.youtube import search_youtube
 
 router = APIRouter()
+
+# Keep references to prevent GC-cancellation of in-flight download tasks
+_download_tasks: set[asyncio.Task] = set()
+
+
+def _spawn_download(download_id: int, username: str, password: str) -> None:
+    task = asyncio.create_task(process_download(download_id, username, password))
+    _download_tasks.add(task)
+    task.add_done_callback(_download_tasks.discard)
 
 
 class DownloadRequest(BaseModel):
@@ -55,7 +64,6 @@ class PlaylistImportResponse(BaseModel):
 @router.post("/download", response_model=DownloadResponse)
 async def start_download(
     body: DownloadRequest,
-    background_tasks: BackgroundTasks,
     user: UserContext = Depends(get_current_user),
     db=Depends(get_db),
 ):
@@ -83,12 +91,14 @@ async def start_download(
         title=body.title,
         artist=body.artist,
         status="queued",
+        navidrome_username=user.username,
+        navidrome_password=user.password,
     )
     db.add(dl)
     await db.commit()
     await db.refresh(dl)
 
-    background_tasks.add_task(process_download, dl.id, user.username, user.password)
+    _spawn_download(dl.id, user.username, user.password)
 
     return DownloadResponse(download_id=dl.id, status="queued")
 
@@ -158,7 +168,6 @@ async def list_cached(
 @router.post("/import/playlist", response_model=PlaylistImportResponse)
 async def import_playlist(
     body: PlaylistImportRequest,
-    background_tasks: BackgroundTasks,
     user: UserContext = Depends(get_current_user),
     db=Depends(get_db),
 ):
@@ -184,12 +193,14 @@ async def import_playlist(
             artist=entry.get("channel", entry.get("uploader", "Unknown")),
             status="queued",
             playlist_name=body.playlist_name or None,
+            navidrome_username=user.username,
+            navidrome_password=user.password,
         )
         db.add(dl)
         await db.commit()
         await db.refresh(dl)
         download_ids.append(dl.id)
-        background_tasks.add_task(process_download, dl.id, user.username, user.password)
+        _spawn_download(dl.id, user.username, user.password)
 
     return PlaylistImportResponse(
         queued=len(download_ids),
