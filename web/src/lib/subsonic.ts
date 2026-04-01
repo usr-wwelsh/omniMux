@@ -4,17 +4,21 @@ import { auth } from './auth';
 const NAVIDROME_URL = import.meta.env.VITE_NAVIDROME_URL || '/navidrome';
 
 function md5(input: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(input);
-  return crypto.subtle.digest('MD5', data).then((hash) => {
-    return Array.from(new Uint8Array(hash))
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-  }).catch(() => {
-    // MD5 not available in crypto.subtle in all browsers, use simple hash
-    // Fallback: send password as-is with p= param
-    return '';
-  });
+  try {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(input);
+    return crypto.subtle.digest('MD5', data).then((hash) => {
+      return Array.from(new Uint8Array(hash))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+    }).catch(() => {
+      return '';
+    });
+  } catch {
+    // crypto.subtle unavailable in non-secure contexts (HTTP + non-localhost)
+    // Fall back to cleartext password via p= param
+    return Promise.resolve('');
+  }
 }
 
 function randomHex(length: number): string {
