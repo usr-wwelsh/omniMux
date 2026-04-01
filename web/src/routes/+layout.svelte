@@ -9,6 +9,7 @@
   import MiniPlayer from '../components/MiniPlayer.svelte';
   import NowPlaying from '../components/NowPlaying.svelte';
   import { startDeviceSync, stopDeviceSync } from '$lib/stores/devices';
+  import { onMount } from 'svelte';
 
   let { children } = $props();
 
@@ -29,11 +30,11 @@
     }
   });
 
-  $effect(() => {
+  onMount(() => {
     if ($auth.authenticated) {
       startDeviceSync();
-      return () => stopDeviceSync();
     }
+    return () => stopDeviceSync();
   });
 
   let isLogin = $derived(page.url.pathname === '/login');
@@ -75,7 +76,8 @@
 
   .app-shell.mobile {
     height: 100vh;
-    overflow: visible;
+    height: 100dvh;
+    overflow: hidden;
     flex-direction: column;
   }
 
@@ -92,6 +94,7 @@
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
     padding: 24px;
     padding-bottom: calc(24px + var(--bottom-nav-height) + var(--mini-player-height));
   }
