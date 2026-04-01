@@ -7,9 +7,9 @@ services:
       - ./data/navidrome:/data
       - ./data/music:/music
     environment:
-      ND_SCANSCHEDULE: 0
+      ND_SCANSCHEDULE: "@every 1m"
       ND_LOGLEVEL: info
-      ND_BASEURL: ""
+      ND_BASEURL: "/navidrome"
     restart: unless-stopped
 
   omnimux-api:

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { subsonic, type Artist, type Album } from '$lib/subsonic';
-  import { api, type YouTubeAlbumResult } from '$lib/api';
+  import { api, type YouTubeAlbumResult, type YouTubeResult } from '$lib/api';
   import AlbumCard from '../../../components/AlbumCard.svelte';
 
   let name = $derived(decodeURIComponent(page.params.name));
@@ -13,6 +13,9 @@
   let showAllYt = $state(false);
   let importingAlbums = $state<Set<string>>(new Set());
   let importedAlbums = $state<Set<string>>(new Set());
+  let expandedAlbum = $state<string | null>(null);
+  let previewTracks = $state<Map<string, YouTubeResult[]>>(new Map());
+  let loadingPreview = $state<Set<string>>(new Set());
 
   const YT_PREVIEW = 8;
   const visibleYtAlbums = $derived(showAllYt ? ytAlbums : ytAlbums.slice(0, YT_PREVIEW));
@@ -54,6 +57,26 @@
     }
 
     ytLoading = false;
+  }
+
+  async function togglePreview(album: YouTubeAlbumResult) {
+    if (expandedAlbum === album.playlist_id) {
+      expandedAlbum = null;
+      return;
+    }
+    expandedAlbum = album.playlist_id;
+    if (!previewTracks.has(album.playlist_id)) {
+      loadingPreview = new Set([...loadingPreview, album.playlist_id]);
+      try {
+        const tracks = await api.getYouTubeAlbumTracks(name, album.title);
+        previewTracks = new Map([...previewTracks, [album.playlist_id, tracks]]);
+      } catch {
+        previewTracks = new Map([...previewTracks, [album.playlist_id, []]]);
+      } finally {
+        loadingPreview.delete(album.playlist_id);
+        loadingPreview = new Set(loadingPreview);
+      }
+    }
   }
 
   async function importAlbum(album: YouTubeAlbumResult) {
@@ -104,33 +127,60 @@
     {:else}
       <div class="yt-album-grid">
         {#each visibleYtAlbums as album}
-          <div class="yt-album-card">
-            {#if album.thumbnail_url}
-              <img src={album.thumbnail_url} alt={album.title} class="yt-album-art" />
-            {:else}
-              <div class="yt-album-art placeholder">
-                <svg viewBox="0 0 24 24" width="40" height="40" fill="var(--text-subdued)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+          <div class="yt-album-card" class:expanded={expandedAlbum === album.playlist_id}>
+            <button class="yt-album-header" onclick={() => togglePreview(album)}>
+              {#if album.thumbnail_url}
+                <img src={album.thumbnail_url} alt={album.title} class="yt-album-art" />
+              {:else}
+                <div class="yt-album-art placeholder">
+                  <svg viewBox="0 0 24 24" width="40" height="40" fill="var(--text-subdued)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                </div>
+              {/if}
+              <div class="yt-album-name">{album.title}</div>
+              {#if album.track_count > 0}
+                <div class="yt-album-meta">
+                  {album.track_count} tracks
+                  <svg class="chevron" class:open={expandedAlbum === album.playlist_id} viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M7 10l5 5 5-5z"/></svg>
+                </div>
+              {/if}
+            </button>
+
+            {#if expandedAlbum === album.playlist_id}
+              <div class="yt-track-list">
+                {#if loadingPreview.has(album.playlist_id)}
+                  <p class="preview-loading">Loading tracks...</p>
+                {:else}
+                  {#each (previewTracks.get(album.playlist_id) ?? []) as track, i}
+                    <div class="yt-track-row">
+                      <span class="yt-track-num">{i + 1}</span>
+                      <span class="yt-track-title">{track.title}</span>
+                      <span class="yt-track-dur">{Math.floor(track.duration / 60)}:{String(track.duration % 60).padStart(2, '0')}</span>
+                    </div>
+                  {/each}
+                  {#if (previewTracks.get(album.playlist_id) ?? []).length === 0 && !loadingPreview.has(album.playlist_id)}
+                    <p class="preview-loading">No tracks found</p>
+                  {/if}
+                {/if}
               </div>
             {/if}
-            <div class="yt-album-name">{album.title}</div>
-            {#if album.track_count > 0}
-              <div class="yt-album-meta">{album.track_count} tracks</div>
-            {/if}
-            {#if importedAlbums.has(album.playlist_id)}
-              <a href="/playlists" class="yt-album-imported">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="var(--accent)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-                View in Playlists
-              </a>
-            {:else if importingAlbums.has(album.playlist_id)}
-              <span class="yt-album-importing">
-                <svg class="spin" viewBox="0 0 24 24" width="12" height="12" fill="var(--text-secondary)"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
-                Importing...
-              </span>
-            {:else}
-              <button class="yt-album-import-btn" onclick={() => importAlbum(album)}>
-                Import Album
-              </button>
-            {/if}
+
+            <div class="yt-album-actions">
+              {#if importedAlbums.has(album.playlist_id)}
+                <a href="/playlists" class="yt-album-imported">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="var(--accent)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                  View in Playlists
+                </a>
+              {:else if importingAlbums.has(album.playlist_id)}
+                <span class="yt-album-importing">
+                  <svg class="spin" viewBox="0 0 24 24" width="12" height="12" fill="var(--text-secondary)"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                  Importing...
+                </span>
+              {:else}
+                <button class="yt-album-import-btn" onclick={() => importAlbum(album)}>
+                  Import Album
+                </button>
+              {/if}
+            </div>
           </div>
         {/each}
       </div>
@@ -221,6 +271,80 @@
     border-radius: 8px;
     padding: 12px;
     gap: 6px;
+  }
+
+  .yt-album-card.expanded {
+    background: var(--bg-elevated);
+  }
+
+  .yt-album-header {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    background: none;
+    border: none;
+    padding: 0;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+  }
+
+  .chevron {
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 2px;
+    transition: transform 0.2s;
+  }
+
+  .chevron.open {
+    transform: rotate(180deg);
+  }
+
+  .yt-album-actions {
+    margin-top: 4px;
+  }
+
+  .yt-track-list {
+    border-top: 1px solid var(--bg-highlight, rgba(255,255,255,0.08));
+    padding-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .yt-track-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    padding: 2px 0;
+  }
+
+  .yt-track-num {
+    color: var(--text-subdued);
+    min-width: 16px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .yt-track-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .yt-track-dur {
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .preview-loading {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 4px 0;
   }
 
   .yt-album-art {

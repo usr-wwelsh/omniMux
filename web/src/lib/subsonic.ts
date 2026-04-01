@@ -1,7 +1,7 @@
 import { get } from 'svelte/store';
 import { auth } from './auth';
 
-const NAVIDROME_URL = import.meta.env.VITE_NAVIDROME_URL || 'http://localhost:4533';
+const NAVIDROME_URL = import.meta.env.VITE_NAVIDROME_URL || '/navidrome';
 
 function md5(input: string): Promise<string> {
   const encoder = new TextEncoder();
