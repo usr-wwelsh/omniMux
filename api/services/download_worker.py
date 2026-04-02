@@ -202,13 +202,14 @@ async def _add_to_navidrome_playlist(title: str, artist: str, playlist_name: str
 
 async def _analyze_mood(file_path: str) -> dict | None:
     async with _mood_semaphore:
+        import json
+        import sys
+        import tempfile
+
+        analyze_path = file_path
+        tmp_path = None
+
         try:
-            from mood_detector import analyze_audio
-            import tempfile
-
-            analyze_path = file_path
-            tmp_path = None
-
             # mood_detector doesn't support opus; convert a 60s sample to flac
             if Path(file_path).suffix.lower() == ".opus":
                 tmp = tempfile.NamedTemporaryFile(suffix=".flac", delete=False)
@@ -216,9 +217,9 @@ async def _analyze_mood(file_path: str) -> dict | None:
                 tmp.close()
                 proc = await asyncio.create_subprocess_exec(
                     "ffmpeg", "-y",
-                    "-t", "60",          # only decode first 60 seconds
+                    "-t", "60",
                     "-i", file_path,
-                    "-threads", "1",     # limit CPU to one thread
+                    "-threads", "1",
                     tmp_path,
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
@@ -226,15 +227,19 @@ async def _analyze_mood(file_path: str) -> dict | None:
                 await proc.wait()
                 analyze_path = tmp_path
 
-            try:
-                result = await asyncio.to_thread(analyze_audio, analyze_path)
-                if hasattr(result, "__dict__"):
-                    return vars(result)
-                if isinstance(result, dict):
-                    return result
+            # Run in a subprocess so ML model memory is freed when it exits
+            worker = Path(__file__).parent / "mood_worker.py"
+            proc = await asyncio.create_subprocess_exec(
+                sys.executable, str(worker), analyze_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode != 0 or not stdout:
                 return None
-            finally:
-                if tmp_path:
-                    Path(tmp_path).unlink(missing_ok=True)
+            return json.loads(stdout)
         except Exception:
             return None
+        finally:
+            if tmp_path:
+                Path(tmp_path).unlink(missing_ok=True)

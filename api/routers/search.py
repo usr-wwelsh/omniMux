@@ -55,7 +55,7 @@ async def search_yt_album_tracks(
         )
         for r in results
     ]
-    cache.set(key, response)
+    cache.set(key, response, _ALBUM_TTL)
     return response
 
 
@@ -81,7 +81,7 @@ async def search_yt_albums(
         )
         for r in results
     ]
-    cache.set(key, response)
+    cache.set(key, response, _ALBUM_TTL)
     return response
 
 
@@ -107,5 +107,5 @@ async def search_yt(
         )
         for r in results
     ]
-    cache.set(key, response)
+    cache.set(key, response, _TRACK_TTL)
     return response
