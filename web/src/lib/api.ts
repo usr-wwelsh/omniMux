@@ -94,6 +94,16 @@ export interface DeviceHeartbeat {
   current_time: number;
 }
 
+export interface TaggerTrack {
+  file_path: string;
+  title: string;
+  artist: string;
+  album: string;
+  genre: string;
+  year: string;
+  duration: number;
+}
+
 export const api = {
   async login(username: string, password: string): Promise<{ token: string; username: string }> {
     return request('/api/auth/login', {
@@ -157,5 +167,16 @@ export const api = {
 
   async backfillMoods(): Promise<{ updated: number; total: number }> {
     return request('/api/playlists/backfill-moods', { method: 'POST' });
+  },
+
+  async getTaggerTracks(): Promise<TaggerTrack[]> {
+    return request('/api/tagger/tracks');
+  },
+
+  async writeTags(file_paths: string[], tags: Record<string, string>): Promise<{ updated: number; errors: string[] }> {
+    return request('/api/tagger/tags', {
+      method: 'POST',
+      body: JSON.stringify({ file_paths, tags }),
+    });
   },
 };

@@ -6,6 +6,7 @@
     queue,
   } from '$lib/stores/player';
   import { showFullscreenPlayer } from '$lib/stores/ui';
+  import { goto } from '$app/navigation';
   import QueuePanel from './QueuePanel.svelte';
 
   let tab = $state<'playing' | 'queue'>('playing');
@@ -82,7 +83,13 @@
     <!-- Track info -->
     <div class="fs-info">
       <div class="fs-title">{$currentTrack.title}</div>
-      <div class="fs-artist">{$currentTrack.artist}</div>
+      {#if $currentTrack.artistId}
+        <button class="fs-artist fs-artist--link" onclick={() => { close(); goto(`/library/artist/${$currentTrack!.artistId}`); }}>
+          {$currentTrack.artist}
+        </button>
+      {:else}
+        <div class="fs-artist">{$currentTrack.artist}</div>
+      {/if}
     </div>
 
     <!-- Progress -->
@@ -236,6 +243,19 @@
   .fs-artist {
     font-size: 16px;
     color: var(--text-secondary);
+  }
+
+  .fs-artist--link {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+
+  .fs-artist--link:hover {
+    color: var(--text-primary);
+    text-decoration: underline;
   }
 
   .fs-progress-section {

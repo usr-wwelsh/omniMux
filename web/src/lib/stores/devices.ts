@@ -86,6 +86,7 @@ export async function listenHere(session: DeviceSession) {
     title: session.track.title,
     artist: session.track.artist,
     album: session.track.album,
+    artistId: '',
     albumId: '',
     duration: session.track.duration,
     streamUrl: sUrl,
