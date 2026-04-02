@@ -1,10 +1,12 @@
 <script lang="ts">
   import { subsonic, type Artist, type Album } from '$lib/subsonic';
+  import { playQueue } from '$lib/stores/player';
   import AlbumCard from '../../components/AlbumCard.svelte';
 
   let albums = $state<Album[]>([]);
   let artists = $state<(Artist & { coverUrl?: string })[]>([]);
   let loading = $state(true);
+  let shuffling = $state(false);
 
   $effect(() => {
     load();
@@ -26,10 +28,30 @@
       loading = false;
     }
   }
+
+  async function shuffleAll() {
+    shuffling = true;
+    try {
+      const songs = await subsonic.getRandomSongs(500);
+      if (songs.length > 0) await playQueue(songs, 0);
+    } finally {
+      shuffling = false;
+    }
+  }
 </script>
 
 <div class="library">
-  <h1 class="page-title">Library</h1>
+  <div class="page-header">
+    <h1 class="page-title">Library</h1>
+    {#if !loading && (albums.length > 0 || artists.length > 0)}
+      <button class="shuffle-btn" onclick={shuffleAll} disabled={shuffling}>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"/>
+        </svg>
+        {shuffling ? 'Loading...' : 'Shuffle All'}
+      </button>
+    {/if}
+  </div>
 
   {#if loading}
     <p class="loading-text">Loading...</p>
@@ -71,10 +93,41 @@
     max-width: 1200px;
   }
 
+  .page-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
   .page-title {
     font-size: 32px;
     font-weight: 700;
-    margin-bottom: 24px;
+    margin-bottom: 0;
+  }
+
+  .shuffle-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  .shuffle-btn:hover {
+    opacity: 0.85;
+  }
+
+  .shuffle-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
   }
 
   .loading-text, .empty-text {
