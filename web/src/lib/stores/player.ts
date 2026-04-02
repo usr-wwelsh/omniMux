@@ -41,7 +41,9 @@ let audio: HTMLAudioElement | null = null;
 
 let _pushTimer: ReturnType<typeof setTimeout> | null = null;
 
-function schedulePushQueue() {
+// activeId: the device that should own playback after this push.
+// Pass localDeviceId to claim ownership, or pass the current activeDeviceId to preserve it.
+function schedulePushQueue(activeId: string) {
   if (_pushTimer) clearTimeout(_pushTimer);
   _pushTimer = setTimeout(async () => {
     const myId = get(localDeviceId);
@@ -49,9 +51,21 @@ function schedulePushQueue() {
     const tracks = get(queue);
     const index = get(queueIndex);
     try {
-      await api.setQueue(tracks, index, myId);
+      await api.setQueue(tracks, index, activeId);
     } catch {}
   }, 150);
+}
+
+// Returns the current active device ID, falling back to this device if none set.
+function activeOrMe(): string {
+  return get(activeDeviceId) || get(localDeviceId);
+}
+
+// Returns true if this device should be playing audio.
+function isThisDeviceActive(): boolean {
+  if (get(soloMode)) return true;
+  const active = get(activeDeviceId);
+  return !active || active === get(localDeviceId);
 }
 
 // Called by devices.ts when polling the server queue
@@ -75,7 +89,7 @@ export function applyServerQueueState(
       const localIdx = get(queueIndex);
       if (localIdx >= tracks.length) queueIndex.set(tracks.length - 1);
     }
-    // Apply remote index change (another device skipped)
+    // Apply remote index change (another device skipped / played a new queue)
     const localIdx = get(queueIndex);
     if (index !== localIdx && index >= 0 && index < tracks.length) {
       queueIndex.set(index);
@@ -144,6 +158,8 @@ export async function playSong(song: Song) {
   playTrack(track);
 }
 
+// playTrack always claims this device as active and starts audio.
+// Only call this when you intend to actually play audio here.
 export function playTrack(track: Track) {
   const a = getAudio();
   const myId = get(localDeviceId);
@@ -160,24 +176,31 @@ export async function playQueue(songs: Song[], startIndex = 0) {
   const tracks = await Promise.all(songs.map(songToTrack));
   queue.set(tracks);
   queueIndex.set(startIndex);
-  if (tracks[startIndex]) {
-    playTrack(tracks[startIndex]);
+  if (isThisDeviceActive()) {
+    // Play here and claim ownership
+    if (tracks[startIndex]) playTrack(tracks[startIndex]);
+    schedulePushQueue(get(localDeviceId));
+  } else {
+    // Send to the active device — update queue/index but don't steal audio
+    if (tracks[startIndex]) currentTrack.set(tracks[startIndex]);
+    schedulePushQueue(activeOrMe());
   }
-  schedulePushQueue();
 }
 
 export function togglePlay() {
   const a = getAudio();
   if (a.paused) {
+    // Pressing play is an explicit intent to play on this device — claim active
     const myId = get(localDeviceId);
     if (myId) activeDeviceId.set(myId);
     a.play();
-    schedulePushQueue();
+    schedulePushQueue(myId || activeOrMe());
   } else {
     a.pause();
   }
 }
 
+// Explicitly transfer audio playback to this device
 export function claimPlayback() {
   const myId = get(localDeviceId);
   if (!myId) return;
@@ -194,7 +217,7 @@ export function claimPlayback() {
       a.play();
     }
   }
-  schedulePushQueue();
+  schedulePushQueue(myId);
 }
 
 export function seek(time: number) {
@@ -213,33 +236,37 @@ export function playNext() {
   const idx = get(queueIndex);
   const loopMode = get(loop);
   const shuffleOn = get(shuffle);
+  const active = isThisDeviceActive();
+
+  function playOrRoute(track: Track, newIdx: number) {
+    queueIndex.set(newIdx);
+    if (active) {
+      playTrack(track);
+      schedulePushQueue(get(localDeviceId));
+    } else {
+      currentTrack.set(track);
+      schedulePushQueue(activeOrMe());
+    }
+  }
 
   if (loopMode === 'one') {
-    playTrack(q[idx]);
-    schedulePushQueue();
+    playOrRoute(q[idx], idx);
     return;
   }
 
   if (shuffleOn && q.length > 1) {
     let next;
     do { next = Math.floor(Math.random() * q.length); } while (next === idx);
-    queueIndex.set(next);
-    playTrack(q[next]);
-    schedulePushQueue();
+    playOrRoute(q[next], next);
     return;
   }
 
   if (idx < q.length - 1) {
-    const next = idx + 1;
-    queueIndex.set(next);
-    playTrack(q[next]);
-    schedulePushQueue();
+    playOrRoute(q[idx + 1], idx + 1);
   } else if (loopMode === 'all') {
-    queueIndex.set(0);
-    playTrack(q[0]);
-    schedulePushQueue();
+    playOrRoute(q[0], 0);
   } else {
-    isPlaying.set(false);
+    if (active) isPlaying.set(false);
   }
 }
 
@@ -260,21 +287,27 @@ export function playPrev() {
   const idx = get(queueIndex);
   if (idx > 0) {
     const prev = idx - 1;
+    const track = get(queue)[prev];
     queueIndex.set(prev);
-    playTrack(get(queue)[prev]);
-    schedulePushQueue();
+    if (isThisDeviceActive()) {
+      playTrack(track);
+      schedulePushQueue(get(localDeviceId));
+    } else {
+      currentTrack.set(track);
+      schedulePushQueue(activeOrMe());
+    }
   }
 }
 
 export function addToQueue(track: Track) {
   queue.update((q) => [...q, track]);
-  schedulePushQueue();
+  schedulePushQueue(activeOrMe()); // never steals active
 }
 
 export async function addSongToQueue(song: Song) {
   const track = await songToTrack(song);
   queue.update((q) => [...q, track]);
-  schedulePushQueue();
+  schedulePushQueue(activeOrMe()); // never steals active
 }
 
 export function removeFromQueue(index: number) {
@@ -286,15 +319,19 @@ export function removeFromQueue(index: number) {
 
   if (newQ.length === 0) {
     queueIndex.set(-1);
-    isPlaying.set(false);
+    if (isThisDeviceActive()) isPlaying.set(false);
   } else if (index === idx) {
     const next = Math.min(idx, newQ.length - 1);
     queueIndex.set(next);
-    playTrack(newQ[next]);
+    if (isThisDeviceActive()) {
+      playTrack(newQ[next]);
+    } else {
+      currentTrack.set(newQ[next]);
+    }
   } else if (index < idx) {
     queueIndex.set(idx - 1);
   }
-  schedulePushQueue();
+  schedulePushQueue(activeOrMe());
 }
 
 export function reorderQueue(from: number, to: number) {
@@ -312,15 +349,20 @@ export function reorderQueue(from: number, to: number) {
   } else if (from > to && idx >= to && idx < from) {
     queueIndex.set(idx + 1);
   }
-  schedulePushQueue();
+  schedulePushQueue(activeOrMe());
 }
 
 export function jumpToQueue(index: number) {
   const q = get(queue);
   if (index >= 0 && index < q.length) {
     queueIndex.set(index);
-    playTrack(q[index]);
-    schedulePushQueue();
+    if (isThisDeviceActive()) {
+      playTrack(q[index]);
+      schedulePushQueue(get(localDeviceId));
+    } else {
+      currentTrack.set(q[index]);
+      schedulePushQueue(activeOrMe());
+    }
   }
 }
 
