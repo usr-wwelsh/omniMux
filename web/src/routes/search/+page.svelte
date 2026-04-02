@@ -13,6 +13,7 @@
   let cachedIds = $state<Set<string>>(new Set());
   let downloadingIds = $state<Map<string, number>>(new Map());
   let searching = $state(false);
+  let errorIds = $state<Set<string>>(new Set());
   let searchTimeout: ReturnType<typeof setTimeout>;
 
   function handleInput() {
@@ -48,6 +49,8 @@
   }
 
   async function cacheTrack(result: YouTubeResult) {
+    errorIds.delete(result.youtube_id);
+    errorIds = new Set(errorIds);
     try {
       const resp = await api.startDownload(result.url, result.youtube_id, result.title, result.artist);
       if (resp.already_cached) {
@@ -57,14 +60,16 @@
         pollDownload(result.youtube_id, resp.download_id);
       }
     } catch {
-      // ignore
+      errorIds = new Set([...errorIds, result.youtube_id]);
     }
   }
 
   async function pollDownload(ytId: string, dlId: number) {
+    let failures = 0;
     const interval = setInterval(async () => {
       try {
         const status = await api.getDownloadStatus(dlId);
+        failures = 0;
         if (status.status === 'completed') {
           clearInterval(interval);
           downloadingIds.delete(ytId);
@@ -74,9 +79,16 @@
           clearInterval(interval);
           downloadingIds.delete(ytId);
           downloadingIds = new Map(downloadingIds);
+          errorIds = new Set([...errorIds, ytId]);
         }
       } catch {
-        clearInterval(interval);
+        // Only give up after 5 consecutive network errors
+        if (++failures >= 5) {
+          clearInterval(interval);
+          downloadingIds.delete(ytId);
+          downloadingIds = new Map(downloadingIds);
+          errorIds = new Set([...errorIds, ytId]);
+        }
       }
     }, 2000);
   }
@@ -178,6 +190,11 @@
                   <svg class="spin" viewBox="0 0 24 24" width="16" height="16" fill="var(--text-secondary)"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
                   Caching...
                 </span>
+              {:else if errorIds.has(result.youtube_id)}
+                <button class="cache-btn cache-btn--error" onclick={() => cacheTrack(result)}>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                  Retry
+                </button>
               {:else}
                 <button class="cache-btn" onclick={() => cacheTrack(result)}>
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
@@ -423,6 +440,11 @@
   .cache-btn:hover {
     border-color: var(--text-primary);
     transform: scale(1.05);
+  }
+
+  .cache-btn--error {
+    border-color: #e05252;
+    color: #e05252;
   }
 
   .cached-badge {
