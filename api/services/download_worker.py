@@ -46,6 +46,13 @@ async def process_download(download_id: int, username: str, password: str) -> No
                 return
             _in_progress.add(youtube_id)
 
+        # Re-check status after waiting for the semaphore — may have been cancelled
+        async with async_session() as session:
+            dl = await session.get(Download, download_id)
+            if not dl or dl.status == "cancelled":
+                _in_progress.discard(youtube_id)
+                return
+
         try:
             await _do_download(download_id, username, password)
         finally:
@@ -106,6 +113,13 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
         return
 
     await _update_download(download_id, progress=80, file_path=str(file_path))
+
+    # Check for cancellation before the slow mood analysis step
+    async with async_session() as session:
+        dl = await session.get(Download, download_id)
+        if dl and dl.status == "cancelled":
+            file_path.unlink(missing_ok=True)
+            return
 
     # Step 2: Mood analysis
     await _update_download(download_id, status="analyzing", progress=85)

@@ -105,6 +105,22 @@ async def start_download(
     return DownloadResponse(download_id=dl.id, status="queued")
 
 
+@router.post("/download/{download_id}/cancel")
+async def cancel_download(
+    download_id: int,
+    user: UserContext = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    dl = await db.get(Download, download_id)
+    if not dl:
+        raise HTTPException(status_code=404, detail="Download not found")
+    if dl.status not in ("queued", "downloading", "analyzing", "tagging", "scanning"):
+        raise HTTPException(status_code=400, detail="Download is not active")
+    dl.status = "cancelled"
+    await db.commit()
+    return {"ok": True}
+
+
 @router.get("/download/status/{download_id}", response_model=DownloadStatus)
 async def get_download_status(
     download_id: int,

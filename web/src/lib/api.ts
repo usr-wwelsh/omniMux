@@ -135,6 +135,10 @@ export const api = {
     return request(`/api/download/status/${id}`);
   },
 
+  async cancelDownload(id: number): Promise<void> {
+    return request(`/api/download/${id}/cancel`, { method: 'POST' });
+  },
+
   async getDownloads(): Promise<DownloadStatus[]> {
     return request('/api/downloads');
   },

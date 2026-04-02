@@ -44,10 +44,28 @@
     }
   }
 
+  let cancellingIds = $state<Set<number>>(new Set());
+
+  async function cancelDownload(id: number) {
+    cancellingIds = new Set([...cancellingIds, id]);
+    try {
+      await api.cancelDownload(id);
+      downloads = downloads.map((dl) =>
+        dl.id === id ? { ...dl, status: 'cancelled' } : dl
+      );
+    } catch {
+      // ignore — next poll will reflect real state
+    } finally {
+      cancellingIds.delete(id);
+      cancellingIds = new Set(cancellingIds);
+    }
+  }
+
   function statusColor(status: string): string {
     switch (status) {
       case 'completed': return 'var(--accent)';
       case 'failed': return 'var(--danger)';
+      case 'cancelled': return 'var(--text-subdued)';
       case 'downloading': return '#3498db';
       case 'analyzing': return '#9b59b6';
       case 'tagging': return '#e67e22';
@@ -65,9 +83,12 @@
       case 'scanning': return 'Scanning library';
       case 'completed': return 'Completed';
       case 'failed': return 'Failed';
+      case 'cancelled': return 'Cancelled';
       default: return status;
     }
   }
+
+  const activeStatuses = new Set(['queued', 'downloading', 'analyzing', 'tagging', 'scanning']);
 </script>
 
 <div class="downloads-page">
@@ -133,6 +154,17 @@
               </div>
             {/if}
           </div>
+
+          {#if activeStatuses.has(dl.status)}
+            <button
+              class="cancel-btn"
+              disabled={cancellingIds.has(dl.id)}
+              onclick={() => cancelDownload(dl.id)}
+              title="Cancel"
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
+          {/if}
 
           <div class="dl-meta">
             {#if dl.mood}
@@ -327,6 +359,28 @@
     font-size: 12px;
     color: var(--danger);
     margin-top: 4px;
+  }
+
+  .cancel-btn {
+    padding: 5px;
+    background: transparent;
+    border: 1px solid var(--text-subdued);
+    border-radius: 50%;
+    color: var(--text-subdued);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+
+  .cancel-btn:not(:disabled):hover {
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+
+  .cancel-btn:disabled {
+    opacity: 0.4;
   }
 
   @keyframes spin {
