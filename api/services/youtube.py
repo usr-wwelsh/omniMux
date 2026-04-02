@@ -82,8 +82,8 @@ def get_youtube_album_tracks(artist: str, album: str) -> list[SearchResult]:
     if not album_results:
         return []
 
-    # Pick the best match: prefer Topic channel + closest title match
-    best = max(album_results, key=lambda r: _title_score(r, artist, album))
+    # Pick the best match: prefer Topic channel + closest title match, then more tracks
+    best = max(album_results, key=lambda r: (*_title_score(r, artist, album), r.track_count))
     # Bail out if nothing remotely matches — avoids returning tracks from a random playlist
     if _title_score(best, artist, album) == (0, 0):
         return []
@@ -146,6 +146,10 @@ def search_youtube_albums(query: str, limit: int = 10) -> list[AlbumResult]:
                 if not entry or not entry.get("id"):
                     continue
                 playlist_id = entry["id"]
+                # Skip YouTube auto-generated mixes (RD...) — they're not real album
+                # playlists and only return a handful of tracks when extracted
+                if playlist_id.startswith("RD"):
+                    continue
                 thumbnails = entry.get("thumbnails") or []
                 thumb = thumbnails[-1].get("url", "") if thumbnails else entry.get("thumbnail", "")
                 results.append(AlbumResult(
@@ -154,7 +158,7 @@ def search_youtube_albums(query: str, limit: int = 10) -> list[AlbumResult]:
                     artist=entry.get("channel", entry.get("uploader", "")),
                     track_count=entry.get("playlist_count") or 0,
                     thumbnail_url=thumb,
-                    url=entry.get("url") or f"https://www.youtube.com/playlist?list={playlist_id}",
+                    url=f"https://www.youtube.com/playlist?list={playlist_id}",
                 ))
                 if len(results) >= limit:
                     break
