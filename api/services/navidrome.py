@@ -93,3 +93,13 @@ async def add_song_to_playlist(playlist_id: str, song_id: str, username: str, pa
     params["songIdToAdd"] = song_id
     async with httpx.AsyncClient() as client:
         await client.get(f"{NAVIDROME_URL}/rest/updatePlaylist.view", params=params)
+
+
+async def replace_playlist_songs(playlist_id: str, song_ids: list[str], username: str, password: str) -> None:
+    """Replace all songs in a playlist with the given song IDs."""
+    base_params = _subsonic_params(username, password)
+    base_params["playlistId"] = playlist_id
+    # httpx accepts list values to produce repeated query params (songId=1&songId=2...)
+    params: dict = {**base_params, "songId": song_ids}
+    async with httpx.AsyncClient() as client:
+        await client.get(f"{NAVIDROME_URL}/rest/createPlaylist.view", params=params)

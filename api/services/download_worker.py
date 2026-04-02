@@ -202,11 +202,33 @@ async def _add_to_navidrome_playlist(title: str, artist: str, playlist_name: str
 async def _analyze_mood(file_path: str) -> dict | None:
     try:
         from mood_detector import analyze_audio
-        result = await asyncio.to_thread(analyze_audio, file_path)
-        if hasattr(result, "__dict__"):
-            return vars(result)
-        if isinstance(result, dict):
-            return result
-        return None
+        import tempfile
+
+        analyze_path = file_path
+        tmp_path = None
+
+        # mood_detector doesn't support opus; convert to a temp flac first
+        if Path(file_path).suffix.lower() == ".opus":
+            tmp = tempfile.NamedTemporaryFile(suffix=".flac", delete=False)
+            tmp_path = tmp.name
+            tmp.close()
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-y", "-i", file_path, tmp_path,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.wait()
+            analyze_path = tmp_path
+
+        try:
+            result = await asyncio.to_thread(analyze_audio, analyze_path)
+            if hasattr(result, "__dict__"):
+                return vars(result)
+            if isinstance(result, dict):
+                return result
+            return None
+        finally:
+            if tmp_path:
+                Path(tmp_path).unlink(missing_ok=True)
     except Exception:
         return None

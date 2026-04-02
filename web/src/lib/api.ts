@@ -150,4 +150,12 @@ export const api = {
   async getDevices(): Promise<DeviceSession[]> {
     return request('/api/devices');
   },
+
+  async syncMoodPlaylists(): Promise<{ synced: Record<string, number> }> {
+    return request('/api/playlists/sync-moods', { method: 'POST' });
+  },
+
+  async backfillMoods(): Promise<{ updated: number; total: number }> {
+    return request('/api/playlists/backfill-moods', { method: 'POST' });
+  },
 };

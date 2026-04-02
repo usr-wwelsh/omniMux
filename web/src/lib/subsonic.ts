@@ -251,6 +251,14 @@ export const subsonic = {
     }));
   },
 
+  async getPlaylistCoverArts(id: string, count = 4): Promise<string[]> {
+    const data = await subsonicGet('getPlaylist.view', { id });
+    return (data.playlist?.entry || [])
+      .slice(0, count)
+      .filter((s: any) => s.coverArt)
+      .map((s: any) => s.coverArt as string);
+  },
+
   async getPlaylist(id: string): Promise<{ playlist: Playlist; songs: Song[] }> {
     const data = await subsonicGet('getPlaylist.view', { id });
     const p = data.playlist;
