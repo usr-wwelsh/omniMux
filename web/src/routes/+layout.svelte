@@ -11,7 +11,6 @@
   import { startDeviceSync, stopDeviceSync } from '$lib/stores/devices';
   import { showFullscreenPlayer } from '$lib/stores/ui';
   import FullscreenPlayer from '../components/FullscreenPlayer.svelte';
-  import { onMount } from 'svelte';
 
   let { children } = $props();
 
@@ -32,11 +31,11 @@
     }
   });
 
-  onMount(() => {
+  $effect(() => {
     if ($auth.authenticated) {
       startDeviceSync();
+      return () => stopDeviceSync();
     }
-    return () => stopDeviceSync();
   });
 
   let isLogin = $derived(page.url.pathname === '/login');

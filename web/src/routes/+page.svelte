@@ -2,11 +2,16 @@
   import { subsonic, type Album, type Song, type Playlist } from '$lib/subsonic';
   import AlbumCard from '../components/AlbumCard.svelte';
   import TrackList from '../components/TrackList.svelte';
+  import { otherDevices, listenHere } from '$lib/stores/devices';
+  import { addToQueue } from '$lib/stores/player';
+  import { streamUrl } from '$lib/subsonic';
 
   let randomAlbums = $state<Album[]>([]);
   let randomSongs = $state<Song[]>([]);
   let moodPlaylists = $state<Playlist[]>([]);
   let loading = $state(true);
+
+  const activeDevices = $derived($otherDevices.filter((d) => d.track && d.is_playing));
 
   $effect(() => {
     loadHome();
@@ -33,6 +38,31 @@
 
 <div class="home">
   <h1 class="page-title">Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}</h1>
+
+  {#if activeDevices.length > 0}
+    <section class="section">
+      <h2 class="section-title">Playing on other devices</h2>
+      <div class="device-cards">
+        {#each activeDevices as device}
+          <div class="device-card">
+            <div class="device-card-info">
+              <div class="device-card-name">{device.device_name}</div>
+              <div class="device-card-track">{device.track!.title}</div>
+              <div class="device-card-artist">{device.track!.artist}</div>
+            </div>
+            <div class="device-card-actions">
+              <button class="device-action-btn device-action-btn--primary" onclick={() => listenHere(device)}>
+                Listen here
+              </button>
+              <button class="device-action-btn" onclick={async () => { if (device.track) { const url = await streamUrl(device.track.id); addToQueue({ id: device.track.id, title: device.track.title, artist: device.track.artist, album: device.track.album, artistId: '', albumId: '', duration: device.track.duration, streamUrl: url, coverUrl: device.track.cover_url ?? undefined }); } }}>
+                Add to queue
+              </button>
+            </div>
+          </div>
+        {/each}
+      </div>
+    </section>
+  {/if}
 
   {#if loading}
     <p class="loading-text">Loading...</p>
@@ -126,6 +156,82 @@
   .mood-chip:hover {
     background: var(--accent);
     color: #000;
+  }
+
+  .device-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .device-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 16px;
+    background: var(--bg-secondary);
+    border-radius: 10px;
+  }
+
+  .device-card-name {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-subdued);
+    margin-bottom: 3px;
+  }
+
+  .device-card-track {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .device-card-artist {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+
+  .device-card-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .device-action-btn {
+    padding: 7px 14px;
+    border-radius: 16px;
+    border: 1px solid var(--text-secondary);
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+
+  .device-action-btn:hover {
+    border-color: var(--text-primary);
+  }
+
+  .device-action-btn--primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+  }
+
+  .device-action-btn--primary:hover {
+    opacity: 0.85;
+  }
+
+  @media (max-width: 600px) {
+    .device-card {
+      flex-direction: column;
+      align-items: flex-start;
+    }
   }
 
   .loading-text {

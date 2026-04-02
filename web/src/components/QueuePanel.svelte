@@ -1,6 +1,7 @@
 <script lang="ts">
   import { queue, queueIndex, jumpToQueue, removeFromQueue, reorderQueue, formatTime } from '$lib/stores/player';
 
+  // Mouse drag state
   let dragging = $state(-1);
   let dragOver = $state(-1);
 
@@ -28,6 +29,55 @@
     dragging = -1;
     dragOver = -1;
   }
+
+  // Touch drag state
+  let touchDragging = $state(-1);
+  let touchDragOver = $state(-1);
+  let touchStartY = 0;
+  let touchStartX = 0;
+  let touchActive = false;
+
+  function onHandleTouchStart(e: TouchEvent, i: number) {
+    e.stopPropagation(); // prevent fullscreen swipe-to-close
+    touchDragging = i;
+    touchDragOver = i;
+    touchStartY = e.touches[0].clientY;
+    touchStartX = e.touches[0].clientX;
+    touchActive = false;
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend', onTouchEnd);
+  }
+
+  function onTouchMove(e: TouchEvent) {
+    if (touchDragging === -1) return;
+    const touch = e.touches[0];
+    if (!touchActive) {
+      const dy = Math.abs(touch.clientY - touchStartY);
+      const dx = Math.abs(touch.clientX - touchStartX);
+      if (dy > 6 || dx > 6) touchActive = true;
+    }
+    if (touchActive) {
+      e.preventDefault(); // block scroll while dragging
+      e.stopPropagation();
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      const item = el?.closest('[data-qi]');
+      if (item) {
+        const idx = parseInt((item as HTMLElement).dataset.qi ?? '-1');
+        if (idx !== -1) touchDragOver = idx;
+      }
+    }
+  }
+
+  function onTouchEnd(e: TouchEvent) {
+    document.removeEventListener('touchmove', onTouchMove);
+    document.removeEventListener('touchend', onTouchEnd);
+    if (touchActive && touchDragging !== -1 && touchDragOver !== -1 && touchDragging !== touchDragOver) {
+      reorderQueue(touchDragging, touchDragOver);
+    }
+    touchDragging = -1;
+    touchDragOver = -1;
+    touchActive = false;
+  }
 </script>
 
 <div class="queue-panel">
@@ -41,15 +91,21 @@
           class="queue-item"
           class:is-playing={i === $queueIndex}
           class:is-past={i < $queueIndex}
-          class:is-dragging={dragging === i}
-          class:is-drag-over={dragOver === i && dragging !== i}
+          class:is-dragging={dragging === i || touchDragging === i}
+          class:is-drag-over={(dragOver === i && dragging !== i) || (touchDragOver === i && touchDragging !== i && touchActive)}
+          data-qi={i}
           draggable="true"
           ondragstart={(e) => onDragStart(e, i)}
           ondragover={(e) => onDragOver(e, i)}
           ondrop={(e) => onDrop(e, i)}
           ondragend={onDragEnd}
         >
-          <div class="drag-handle" title="Drag to reorder">
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="drag-handle"
+            title="Drag to reorder"
+            ontouchstart={(e) => onHandleTouchStart(e, i)}
+          >
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M11 18c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm-2-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 4c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
           </div>
 
