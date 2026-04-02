@@ -24,6 +24,7 @@ services:
       MUSIC_DIR: /music
       DATA_DIR: /data
       JWT_SECRET: change-me-in-production
+      MALLOC_ARENA_MAX: 2
     depends_on:
       - navidrome
     restart: unless-stopped
