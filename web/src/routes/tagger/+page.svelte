@@ -7,6 +7,7 @@
   let selected = $state<Set<string>>(new Set());
   let saving = $state(false);
   let saveResult = $state<string | null>(null);
+  let confirmDelete = $state(false);
 
   // Bulk edit fields — empty string = don't change
   let bulkTitle = $state('');
@@ -66,6 +67,23 @@
     bulkAlbum = '';
     bulkGenre = '';
     bulkYear = '';
+  }
+
+  async function deleteTracks() {
+    saving = true;
+    saveResult = null;
+    confirmDelete = false;
+    const paths = [...selected];
+    try {
+      const result = await api.deleteTracks(paths);
+      saveResult = `Deleted ${result.deleted} track${result.deleted !== 1 ? 's' : ''}${result.errors.length ? ` · ${result.errors.length} error(s)` : ''}.`;
+      tracks = tracks.filter((t) => !paths.includes(t.file_path));
+      selected = new Set();
+    } catch (e: any) {
+      saveResult = `Error: ${e.message}`;
+    } finally {
+      saving = false;
+    }
   }
 
   async function applyTags() {
@@ -149,9 +167,18 @@
           <span class="save-result">{saveResult}</span>
         {/if}
         <button class="btn btn--ghost" onclick={clearBulk}>Clear</button>
-        <button class="btn btn--primary" onclick={applyTags} disabled={saving}>
-          {saving ? 'Saving…' : 'Apply'}
-        </button>
+        {#if confirmDelete}
+          <span class="delete-confirm-label">Delete {selected.size} file{selected.size !== 1 ? 's' : ''}?</span>
+          <button class="btn btn--danger" onclick={deleteTracks} disabled={saving}>Yes, delete</button>
+          <button class="btn btn--ghost" onclick={() => (confirmDelete = false)}>Cancel</button>
+        {:else}
+          <button class="btn btn--danger-ghost" onclick={() => (confirmDelete = true)} disabled={saving}>
+            Delete
+          </button>
+          <button class="btn btn--primary" onclick={applyTags} disabled={saving}>
+            {saving ? 'Saving…' : 'Apply'}
+          </button>
+        {/if}
       </div>
     </div>
   {/if}
@@ -329,6 +356,32 @@
   .btn--primary:disabled {
     opacity: 0.5;
     cursor: default;
+  }
+
+  .btn--danger-ghost {
+    background: transparent;
+    color: #e05252;
+    border: 1px solid #e05252;
+  }
+
+  .btn--danger-ghost:hover {
+    background: rgba(224, 82, 82, 0.1);
+  }
+
+  .btn--danger {
+    background: #e05252;
+    color: #fff;
+  }
+
+  .btn--danger:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .delete-confirm-label {
+    font-size: 13px;
+    color: #e05252;
+    font-weight: 600;
   }
 
   /* Table */

@@ -179,4 +179,11 @@ export const api = {
       body: JSON.stringify({ file_paths, tags }),
     });
   },
+
+  async deleteTracks(file_paths: string[]): Promise<{ deleted: number; errors: string[] }> {
+    return request('/api/tagger/delete', {
+      method: 'POST',
+      body: JSON.stringify({ file_paths }),
+    });
+  },
 };

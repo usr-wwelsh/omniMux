@@ -36,6 +36,37 @@ def list_tracks() -> list[dict]:
     return tracks
 
 
+def delete_tracks(file_paths: list[str]) -> tuple[int, list[str]]:
+    """Delete audio files. Returns (deleted_count, errors)."""
+    deleted = 0
+    errors = []
+    root = Path(MUSIC_DIR).resolve()
+
+    for fp in file_paths:
+        path = Path(fp).resolve()
+        try:
+            path.relative_to(root)
+        except ValueError:
+            errors.append(f"Path outside music dir: {fp}")
+            continue
+
+        if not path.exists():
+            errors.append(f"File not found: {fp}")
+            continue
+
+        if path.suffix.lower() not in AUDIO_EXTENSIONS:
+            errors.append(f"Not an audio file: {fp}")
+            continue
+
+        try:
+            path.unlink()
+            deleted += 1
+        except Exception as e:
+            errors.append(f"{path.name}: {e}")
+
+    return deleted, errors
+
+
 def write_tags(file_paths: list[str], tags: dict) -> tuple[int, list[str]]:
     """Write non-empty tag fields to each file. Returns (updated_count, errors)."""
     updated = 0

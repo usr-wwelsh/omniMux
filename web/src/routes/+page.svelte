@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { subsonic, type Album, type Song } from '$lib/subsonic';
+  import { subsonic, type Album, type Song, type Playlist } from '$lib/subsonic';
   import AlbumCard from '../components/AlbumCard.svelte';
   import TrackList from '../components/TrackList.svelte';
 
   let randomAlbums = $state<Album[]>([]);
   let randomSongs = $state<Song[]>([]);
+  let moodPlaylists = $state<Playlist[]>([]);
   let loading = $state(true);
 
   $effect(() => {
@@ -14,12 +15,14 @@
   async function loadHome() {
     loading = true;
     try {
-      const [albums, songs] = await Promise.all([
+      const [albums, songs, playlists] = await Promise.all([
         subsonic.getRandomAlbums(12),
         subsonic.getRandomSongs(10),
+        subsonic.getPlaylists(),
       ]);
       randomAlbums = albums;
       randomSongs = songs;
+      moodPlaylists = playlists.filter((p) => p.name.startsWith('Mood: '));
     } catch {
       // Library may be empty
     } finally {
@@ -40,6 +43,19 @@
         <div class="album-grid">
           {#each randomAlbums as album}
             <AlbumCard {album} />
+          {/each}
+        </div>
+      </section>
+    {/if}
+
+    {#if moodPlaylists.length > 0}
+      <section class="section">
+        <h2 class="section-title">Moods</h2>
+        <div class="mood-chips">
+          {#each moodPlaylists as playlist}
+            <a href="/playlists/{playlist.id}" class="mood-chip">
+              {playlist.name.slice(6)}
+            </a>
           {/each}
         </div>
       </section>
@@ -88,6 +104,28 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
     gap: 16px;
+  }
+
+  .mood-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .mood-chip {
+    padding: 8px 20px;
+    border-radius: 20px;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+
+  .mood-chip:hover {
+    background: var(--accent);
+    color: #000;
   }
 
   .loading-text {
