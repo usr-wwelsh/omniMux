@@ -15,7 +15,7 @@ A self-hosted music server that lets you search YouTube, cache tracks to your li
 - **Playlist import** — paste a YouTube playlist URL to queue all tracks and automatically create a matching Navidrome playlist as downloads complete
 - **Mood analysis** — every downloaded track is analysed for mood, BPM, energy and key using [mood-detector](https://github.com/usr-wwelsh/mood-detector)
 - **Shuffle & loop** — shuffle queue, loop all, or loop one track
-- **PWA** — installable on desktop and mobile; responsive layout with a mobile mini-player
+- **PWA** — installable on desktop and mobile; responsive layout with a mobile mini-player (HTTPS required for install outside localhost — use a reverse proxy with TLS or a tunnel like Cloudflare Tunnel)
 - **Server-side search cache** — YouTube results are cached in memory (1 h for tracks, 2 h for albums) so repeated searches are instant
 
 ## Stack
