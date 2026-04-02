@@ -1,17 +1,28 @@
 <script lang="ts">
-  import { currentTrack, isPlaying, currentTime, duration, shuffle, loop, togglePlay, playNext, toggleShuffle, cycleLoop, formatTime } from '$lib/stores/player';
+  import { currentTrack, isPlaying, currentTime, duration, shuffle, loop, togglePlay, playNext, toggleShuffle, cycleLoop, formatTime, activeDeviceId, localDeviceId, claimPlayback } from '$lib/stores/player';
   import { otherDevices } from '$lib/stores/devices';
   import { showFullscreenPlayer } from '$lib/stores/ui';
   import DevicesPopover from './DevicesPopover.svelte';
 
   let progress = $derived($duration > 0 ? ($currentTime / $duration) * 100 : 0);
   let showDevices = $state(false);
+
+  const isActivePlayer = $derived(!$activeDeviceId || $activeDeviceId === $localDeviceId);
+  const activeDeviceName = $derived(
+    $otherDevices.find((d) => d.device_id === $activeDeviceId)?.device_name ?? 'another device'
+  );
 </script>
 
 {#if $currentTrack}
 <div class="mini-player">
+  {#if !isActivePlayer}
+  <div class="mini-ownership">
+    <span>Playing on <strong>{activeDeviceName}</strong></span>
+    <button class="mini-play-here" onclick={claimPlayback}>Play here</button>
+  </div>
+  {/if}
   <div class="mini-progress-bar"><div class="mini-progress" style="width: {progress}%"></div></div>
-  <div class="mini-content">
+  <div class="mini-content" class:inactive={!isActivePlayer}>
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="mini-track" onclick={() => showFullscreenPlayer.set(true)}>
@@ -71,6 +82,38 @@
     border-radius: 8px 8px 0 0;
     overflow: visible;
     margin: 0 8px;
+  }
+
+  .mini-ownership {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 12px 3px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border-radius: 8px 8px 0 0;
+  }
+
+  .mini-ownership strong {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .mini-play-here {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--accent);
+    padding: 2px 8px;
+    border: 1px solid var(--accent);
+    border-radius: 20px;
+    white-space: nowrap;
+  }
+
+  .mini-content.inactive .mini-play {
+    opacity: 0.4;
+    pointer-events: none;
   }
 
   .mini-progress-bar {

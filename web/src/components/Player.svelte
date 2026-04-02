@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { currentTrack, isPlaying, currentTime, duration, volume, shuffle, loop, togglePlay, seek, setVolume, playNext, playPrev, toggleShuffle, cycleLoop, formatTime } from '$lib/stores/player';
+  import { currentTrack, isPlaying, currentTime, duration, volume, shuffle, loop, togglePlay, seek, setVolume, playNext, playPrev, toggleShuffle, cycleLoop, formatTime, activeDeviceId, localDeviceId, claimPlayback } from '$lib/stores/player';
   import { otherDevices } from '$lib/stores/devices';
   import { showFullscreenPlayer } from '$lib/stores/ui';
   import DevicesPopover from './DevicesPopover.svelte';
@@ -8,6 +8,11 @@
   let volumeBar: HTMLDivElement;
   let seeking = false;
   let showDevices = $state(false);
+
+  const isActivePlayer = $derived(!$activeDeviceId || $activeDeviceId === $localDeviceId);
+  const activeDeviceName = $derived(
+    $otherDevices.find((d) => d.device_id === $activeDeviceId)?.device_name ?? 'another device'
+  );
 
   function handleProgressClick(e: MouseEvent) {
     if (!progressBar) return;
@@ -27,7 +32,14 @@
 </script>
 
 {#if $currentTrack}
-<div class="player">
+{#if !isActivePlayer}
+<div class="ownership-bar">
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M4 6h18V4H4c-1.1 0-2 .9-2 2v11H0v3h14v-3H4V6zm19 2h-6c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h6c.55 0 1-.45 1-1V9c0-.55-.45-1-1-1zm-1 9h-4v-7h4v7z"/></svg>
+  <span>Playing on <strong>{activeDeviceName}</strong></span>
+  <button class="play-here-btn" onclick={claimPlayback}>Play here</button>
+</div>
+{/if}
+<div class="player" class:inactive={!isActivePlayer}>
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="player-track" onclick={() => showFullscreenPlayer.set(true)}>
@@ -102,6 +114,38 @@
 {/if}
 
 <style>
+  .ownership-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 16px;
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+    border-top: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .ownership-bar strong {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .play-here-btn {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    padding: 3px 10px;
+    border: 1px solid var(--accent);
+    border-radius: 20px;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+
+  .play-here-btn:hover {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+
   .player {
     display: flex;
     align-items: center;
@@ -110,6 +154,11 @@
     border-top: 1px solid var(--border);
     padding: 0 16px;
     gap: 16px;
+  }
+
+  .player.inactive .player-controls {
+    opacity: 0.45;
+    pointer-events: none;
   }
 
   .player-track {

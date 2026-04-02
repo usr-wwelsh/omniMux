@@ -1,5 +1,6 @@
 <script lang="ts">
   import { otherDevices, listenHere, type DeviceSession } from '$lib/stores/devices';
+  import { soloMode } from '$lib/stores/player';
 
   let { onclose }: { onclose: () => void } = $props();
 </script>
@@ -9,10 +10,18 @@
 <div class="popover-backdrop" onclick={onclose}></div>
 <div class="devices-popover">
   <div class="popover-header">
-    <span>Other Devices</span>
+    <span>Devices</span>
     <button class="close-btn" onclick={onclose}>
       <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
     </button>
+  </div>
+  <div class="solo-row">
+    <span class="solo-label">Play independently</span>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="solo-toggle" class:on={$soloMode} onclick={() => soloMode.update((v) => !v)} role="switch" aria-checked={$soloMode}>
+      <div class="solo-thumb"></div>
+    </div>
   </div>
 
   {#if $otherDevices.length === 0}
@@ -85,6 +94,50 @@
 
   .close-btn:hover {
     color: var(--text-primary);
+  }
+
+  .solo-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 4px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .solo-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .solo-toggle {
+    width: 34px;
+    height: 18px;
+    background: var(--bg-highlight);
+    border-radius: 9px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+
+  .solo-toggle.on {
+    background: var(--accent);
+  }
+
+  .solo-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s;
+  }
+
+  .solo-toggle.on .solo-thumb {
+    transform: translateX(16px);
   }
 
   .empty-text {

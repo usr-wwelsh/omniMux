@@ -29,6 +29,13 @@ export const loop = writable<'none' | 'all' | 'one'>('none');
 export const activeDeviceId = writable<string | null>(null);
 // This device's own ID (set by devices.ts on startup)
 export const localDeviceId = writable<string>('');
+// When true, this device ignores server queue sync entirely
+export const soloMode = writable<boolean>(
+  typeof localStorage !== 'undefined' && localStorage.getItem('omnimux-solo') === '1'
+);
+soloMode.subscribe((v) => {
+  if (typeof localStorage !== 'undefined') localStorage.setItem('omnimux-solo', v ? '1' : '0');
+});
 
 let audio: HTMLAudioElement | null = null;
 
@@ -38,7 +45,7 @@ function schedulePushQueue() {
   if (_pushTimer) clearTimeout(_pushTimer);
   _pushTimer = setTimeout(async () => {
     const myId = get(localDeviceId);
-    if (!myId) return;
+    if (!myId || get(soloMode)) return;
     const tracks = get(queue);
     const index = get(queueIndex);
     try {
@@ -53,6 +60,7 @@ export function applyServerQueueState(
   index: number,
   serverActiveDevice: string | null,
 ) {
+  if (get(soloMode)) return;
   const myId = get(localDeviceId);
   activeDeviceId.set(serverActiveDevice);
 
@@ -88,10 +96,16 @@ export function applyServerQueueState(
     localTracks.some((t, i) => t.id !== tracks[i]?.id);
   if (tracksChanged) queue.set(tracks);
   const localIdx = get(queueIndex);
-  if (index !== localIdx) {
+  if (index !== localIdx || tracksChanged) {
     queueIndex.set(index);
     if (index >= 0 && index < tracks.length) {
-      currentTrack.set(tracks[index]);
+      const t = tracks[index];
+      currentTrack.set(t);
+      // Pre-load audio src so "Play here" can start instantly
+      if (t.streamUrl) {
+        const a = getAudio();
+        if (a.src !== t.streamUrl) a.src = t.streamUrl;
+      }
     }
   }
 }
@@ -155,10 +169,32 @@ export async function playQueue(songs: Song[], startIndex = 0) {
 export function togglePlay() {
   const a = getAudio();
   if (a.paused) {
+    const myId = get(localDeviceId);
+    if (myId) activeDeviceId.set(myId);
     a.play();
+    schedulePushQueue();
   } else {
     a.pause();
   }
+}
+
+export function claimPlayback() {
+  const myId = get(localDeviceId);
+  if (!myId) return;
+  activeDeviceId.set(myId);
+  const a = getAudio();
+  if (a.src) {
+    a.volume = get(volume);
+    a.play();
+  } else {
+    const track = get(currentTrack);
+    if (track?.streamUrl) {
+      a.src = track.streamUrl;
+      a.volume = get(volume);
+      a.play();
+    }
+  }
+  schedulePushQueue();
 }
 
 export function seek(time: number) {

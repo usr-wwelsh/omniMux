@@ -3,13 +3,19 @@
     currentTrack, isPlaying, currentTime, duration, volume,
     shuffle, loop, togglePlay, seek, setVolume,
     playNext, playPrev, toggleShuffle, cycleLoop, formatTime,
-    queue,
+    queue, activeDeviceId, localDeviceId, claimPlayback,
   } from '$lib/stores/player';
+  import { otherDevices } from '$lib/stores/devices';
   import { showFullscreenPlayer } from '$lib/stores/ui';
   import { goto } from '$app/navigation';
   import QueuePanel from './QueuePanel.svelte';
 
   let tab = $state<'playing' | 'queue'>('playing');
+
+  const isActivePlayer = $derived(!$activeDeviceId || $activeDeviceId === $localDeviceId);
+  const activeDeviceName = $derived(
+    $otherDevices.find((d) => d.device_id === $activeDeviceId)?.device_name ?? 'another device'
+  );
 
   let progressBar: HTMLDivElement;
   let volumeBar: HTMLDivElement;
@@ -89,6 +95,12 @@
           </button>
         {:else}
           <div class="fs-artist">{$currentTrack.artist}</div>
+        {/if}
+        {#if !isActivePlayer}
+          <div class="fs-ownership">
+            <span>Playing on <strong>{activeDeviceName}</strong></span>
+            <button class="fs-play-here-btn" onclick={claimPlayback}>Play here</button>
+          </div>
         {/if}
       </div>
 
@@ -304,6 +316,35 @@
   .fs-artist {
     font-size: 16px;
     color: var(--text-secondary);
+  }
+
+  .fs-ownership {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .fs-ownership strong {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .fs-play-here-btn {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    padding: 4px 12px;
+    border: 1px solid var(--accent);
+    border-radius: 20px;
+    transition: background 0.15s;
+  }
+
+  .fs-play-here-btn:hover {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
   }
 
   .fs-artist--link {
