@@ -94,6 +94,25 @@ export interface DeviceHeartbeat {
   current_time: number;
 }
 
+export interface QueueTrack {
+  id: string;
+  title: string;
+  artist: string;
+  artistId: string;
+  album: string;
+  albumId: string;
+  coverArt?: string;
+  duration: number;
+  streamUrl?: string;
+  coverUrl?: string;
+}
+
+export interface QueueState {
+  tracks: QueueTrack[];
+  index: number;
+  active_device_id: string | null;
+}
+
 export interface TaggerTrack {
   file_path: string;
   title: string;
@@ -163,6 +182,17 @@ export const api = {
 
   async getDevices(): Promise<DeviceSession[]> {
     return request('/api/devices');
+  },
+
+  async getQueue(): Promise<QueueState> {
+    return request('/api/queue');
+  },
+
+  async setQueue(tracks: QueueTrack[], index: number, active_device_id: string): Promise<void> {
+    return request('/api/queue', {
+      method: 'PUT',
+      body: JSON.stringify({ tracks, index, active_device_id }),
+    });
   },
 
   async syncMoodPlaylists(): Promise<{ synced: Record<string, number> }> {

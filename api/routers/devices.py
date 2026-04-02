@@ -11,6 +11,9 @@ router = APIRouter()
 _sessions: dict[str, dict[str, dict]] = {}
 SESSION_TTL_SECONDS = 60
 
+# Server-side shared queue: {username: {tracks, index, active_device_id}}
+_queues: dict[str, dict] = {}
+
 
 class TrackInfo(BaseModel):
     id: str
@@ -51,6 +54,51 @@ async def heartbeat(
         "is_playing": body.is_playing,
         "current_time": body.current_time,
         "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    return {"ok": True}
+
+
+class QueueTrack(BaseModel):
+    id: str
+    title: str
+    artist: str
+    artistId: str = ''
+    album: str
+    albumId: str = ''
+    coverArt: str | None = None
+    duration: float = 0
+    streamUrl: str | None = None
+    coverUrl: str | None = None
+
+
+class QueueState(BaseModel):
+    tracks: list[QueueTrack] = []
+    index: int = -1
+    active_device_id: str | None = None
+
+
+class QueueSetRequest(BaseModel):
+    tracks: list[QueueTrack]
+    index: int
+    active_device_id: str
+
+
+@router.get("/queue", response_model=QueueState)
+async def get_queue(user: UserContext = Depends(get_current_user)):
+    q = _queues.get(user.username, {})
+    return QueueState(
+        tracks=[QueueTrack(**t) for t in q.get('tracks', [])],
+        index=q.get('index', -1),
+        active_device_id=q.get('active_device_id'),
+    )
+
+
+@router.put("/queue")
+async def set_queue(body: QueueSetRequest, user: UserContext = Depends(get_current_user)):
+    _queues[user.username] = {
+        'tracks': [t.model_dump() for t in body.tracks],
+        'index': body.index,
+        'active_device_id': body.active_device_id,
     }
     return {"ok": True}
 
