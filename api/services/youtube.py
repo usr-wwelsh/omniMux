@@ -59,20 +59,36 @@ def search_youtube(query: str, limit: int = 20) -> list[SearchResult]:
     return results
 
 
+def _title_score(result: "AlbumResult", artist: str, album: str) -> tuple[int, int]:
+    """Return (topic_bonus, title_similarity) — higher is better."""
+    topic = 1 if "- topic" in result.artist.lower() else 0
+    t = result.title.lower()
+    a = album.lower()
+    ar = artist.lower()
+    if t == a:
+        sim = 3
+    elif a in t and ar in t:
+        sim = 2
+    elif a in t:
+        sim = 1
+    else:
+        sim = 0
+    return (topic, sim)
+
+
 def get_youtube_album_tracks(artist: str, album: str) -> list[SearchResult]:
     """Find the YouTube album playlist for artist/album and return its tracks."""
-    album_results = search_youtube_albums(f"{artist} {album}", limit=5)
+    album_results = search_youtube_albums(f"{artist} {album}", limit=10)
     if not album_results:
         return []
 
-    # Prefer Topic channel results
-    playlist_url = None
-    for r in album_results:
-        if "- topic" in r.artist.lower():
-            playlist_url = r.url
-            break
-    if not playlist_url:
-        playlist_url = album_results[0].url
+    # Pick the best match: prefer Topic channel + closest title match
+    best = max(album_results, key=lambda r: _title_score(r, artist, album))
+    # Bail out if nothing remotely matches — avoids returning tracks from a random playlist
+    if _title_score(best, artist, album) == (0, 0):
+        return []
+
+    playlist_url = best.url
 
     ydl_opts = {
         "quiet": True,

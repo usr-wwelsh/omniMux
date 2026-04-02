@@ -12,6 +12,8 @@
   let missingTracks = $state<YouTubeResult[]>([]);
   let cachedIds = $state<Set<string>>(new Set());
   let downloadingIds = $state<Map<string, number>>(new Map());
+  let checking = $state(false);
+  let checkDone = $state(false);
 
   $effect(() => {
     loadAlbum(page.params.id);
@@ -20,6 +22,7 @@
   async function loadAlbum(id: string) {
     loading = true;
     missingTracks = [];
+    checkDone = false;
     try {
       const data = await subsonic.getAlbum(id);
       album = data.album;
@@ -38,6 +41,7 @@
   }
 
   async function checkMissingTracks(al: Album, localSongs: Song[]) {
+    checking = true;
     try {
       const [ytTracks, cached] = await Promise.all([
         api.getYouTubeAlbumTracks(al.artist, al.name),
@@ -50,6 +54,9 @@
       );
     } catch {
       // non-fatal
+    } finally {
+      checking = false;
+      checkDone = true;
     }
   }
 
@@ -140,6 +147,31 @@
     </div>
 
     <TrackList {songs} />
+
+    <div class="check-row">
+      {#if checking}
+        <span class="check-status">
+          <svg class="spin" viewBox="0 0 24 24" width="14" height="14" fill="var(--text-secondary)"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+          Checking YouTube...
+        </span>
+      {:else if checkDone && missingTracks.length === 0}
+        <span class="check-status check-status--done">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="var(--accent)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+          Album is complete
+        </span>
+        <button class="recheck-btn" onclick={() => album && checkMissingTracks(album, songs)}>
+          Re-check
+        </button>
+      {:else if !checking && !checkDone}
+        <button class="recheck-btn" onclick={() => album && checkMissingTracks(album, songs)}>
+          Check for missing tracks
+        </button>
+      {:else}
+        <button class="recheck-btn" onclick={() => album && checkMissingTracks(album, songs)}>
+          Re-check
+        </button>
+      {/if}
+    </div>
 
     {#if missingTracks.length > 0}
       <div class="missing-banner">
@@ -236,6 +268,41 @@
 
   .album-artist-link:hover {
     text-decoration: underline;
+  }
+
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 0 4px;
+  }
+
+  .check-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .check-status--done {
+    color: var(--accent);
+  }
+
+  .recheck-btn {
+    padding: 5px 14px;
+    background: transparent;
+    border: 1px solid var(--text-secondary);
+    border-radius: 12px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.15s;
+  }
+
+  .recheck-btn:hover {
+    border-color: var(--text-primary);
+    color: var(--text-primary);
   }
 
   .missing-banner {
