@@ -68,6 +68,7 @@ async def backfill_moods(
     for dl in downloads:
         mood_result = await _analyze_mood(dl.file_path)
         if not mood_result:
+            await asyncio.sleep(0.5)
             continue
         async with async_session() as s:
             d = await s.get(Download, dl.id)
@@ -78,5 +79,6 @@ async def backfill_moods(
                 d.key = mood_result.get("key")
                 await s.commit()
         updated += 1
+        await asyncio.sleep(2)  # breathe between analyses
 
     return {"updated": updated, "total": len(downloads)}
