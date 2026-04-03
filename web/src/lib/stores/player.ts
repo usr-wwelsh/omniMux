@@ -124,14 +124,64 @@ export function applyServerQueueState(
   }
 }
 
+function updateMediaSession(track: Track) {
+  if (!('mediaSession' in navigator)) return;
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: track.title,
+    artist: track.artist,
+    album: track.album,
+    artwork: track.coverUrl ? [{ src: track.coverUrl, sizes: '300x300', type: 'image/jpeg' }] : []
+  });
+}
+
+function setupMediaSession() {
+  if (!('mediaSession' in navigator)) return;
+  navigator.mediaSession.setActionHandler('play', () => {
+    const myId = get(localDeviceId);
+    if (myId) activeDeviceId.set(myId);
+    getAudio().play();
+    schedulePushQueue(myId || activeOrMe());
+  });
+  navigator.mediaSession.setActionHandler('pause', () => getAudio().pause());
+  navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
+  navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
+  navigator.mediaSession.setActionHandler('seekto', (details) => {
+    if (details.seekTime !== undefined) getAudio().currentTime = details.seekTime;
+  });
+  navigator.mediaSession.setActionHandler('seekforward', (details) => {
+    const a = getAudio();
+    a.currentTime = Math.min(a.duration, a.currentTime + (details.seekOffset ?? 10));
+  });
+  navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+    const a = getAudio();
+    a.currentTime = Math.max(0, a.currentTime - (details.seekOffset ?? 10));
+  });
+}
+
 function getAudio(): HTMLAudioElement {
   if (!audio && typeof window !== 'undefined') {
     audio = new Audio();
-    audio.addEventListener('timeupdate', () => currentTime.set(audio!.currentTime));
+    audio.addEventListener('timeupdate', () => {
+      currentTime.set(audio!.currentTime);
+      if ('mediaSession' in navigator && audio!.duration) {
+        navigator.mediaSession.setPositionState({
+          duration: audio!.duration,
+          playbackRate: audio!.playbackRate,
+          position: audio!.currentTime
+        });
+      }
+    });
     audio.addEventListener('durationchange', () => duration.set(audio!.duration || 0));
     audio.addEventListener('ended', () => playNext());
-    audio.addEventListener('pause', () => isPlaying.set(false));
-    audio.addEventListener('play', () => isPlaying.set(true));
+    audio.addEventListener('pause', () => {
+      isPlaying.set(false);
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+    });
+    audio.addEventListener('play', () => {
+      isPlaying.set(true);
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+    });
+    setupMediaSession();
   }
   return audio!;
 }
@@ -165,6 +215,7 @@ export function playTrack(track: Track) {
   const myId = get(localDeviceId);
   if (myId) activeDeviceId.set(myId);
   currentTrack.set(track);
+  updateMediaSession(track);
   if (track.streamUrl) {
     a.src = track.streamUrl;
     a.volume = get(volume);
