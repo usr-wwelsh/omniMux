@@ -15,6 +15,35 @@
   let searching = $state(false);
   let errorIds = $state<Set<string>>(new Set());
   let searchTimeout: ReturnType<typeof setTimeout>;
+  let inputFocused = $state(false);
+
+  let recentSearches = $state<string[]>(
+    typeof localStorage !== 'undefined'
+      ? JSON.parse(localStorage.getItem('omnimux-recent-searches') || '[]')
+      : []
+  );
+
+  const showRecents = $derived(inputFocused && query.length < 2 && recentSearches.length > 0);
+
+  function saveRecentSearch(q: string) {
+    const trimmed = q.trim();
+    if (!trimmed) return;
+    const updated = [trimmed, ...recentSearches.filter(s => s !== trimmed)].slice(0, 8);
+    recentSearches = updated;
+    localStorage.setItem('omnimux-recent-searches', JSON.stringify(updated));
+  }
+
+  function removeRecentSearch(e: MouseEvent, q: string) {
+    e.stopPropagation();
+    const updated = recentSearches.filter(s => s !== q);
+    recentSearches = updated;
+    localStorage.setItem('omnimux-recent-searches', JSON.stringify(updated));
+  }
+
+  function selectRecent(q: string) {
+    query = q;
+    doSearch();
+  }
 
   function handleInput() {
     clearTimeout(searchTimeout);
@@ -41,6 +70,7 @@
       librarySongs = libraryResult.songs;
       youtubeResults = ytResult;
       cachedIds = new Set(cached);
+      saveRecentSearch(query);
     } catch {
       // ignore
     } finally {
@@ -112,8 +142,23 @@
       placeholder="What do you want to listen to?"
       bind:value={query}
       oninput={handleInput}
+      onfocus={() => inputFocused = true}
+      onblur={() => setTimeout(() => inputFocused = false, 150)}
       class="search-input"
     />
+    {#if showRecents}
+      <div class="recents-dropdown">
+        {#each recentSearches as recent}
+          <button class="recent-item" onclick={() => selectRecent(recent)}>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="var(--text-secondary)"><path d="M13 3a9 9 0 1 0 0 18A9 9 0 0 0 13 3zm0 16a7 7 0 1 1 0-14A7 7 0 0 1 13 19zm.5-11H12v6l5.25 3.15.75-1.23-4.5-2.67V8z"/></svg>
+            <span>{recent}</span>
+            <button class="recent-remove" onclick={(e) => removeRecentSearch(e, recent)} aria-label="Remove">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
+          </button>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   {#if searching}
@@ -221,6 +266,58 @@
   .search-bar-wrapper {
     position: relative;
     margin-bottom: 24px;
+  }
+
+  .recents-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    background: var(--bg-elevated);
+    border-radius: 12px;
+    overflow: hidden;
+    z-index: 100;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+
+  .recent-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 11px 16px;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+
+  .recent-item:hover {
+    background: var(--bg-highlight);
+  }
+
+  .recent-item span {
+    flex: 1;
+  }
+
+  .recent-remove {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    padding: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    border-radius: 50%;
+    opacity: 0.6;
+    transition: opacity 0.1s;
+  }
+
+  .recent-remove:hover {
+    opacity: 1;
   }
 
   .search-icon {
