@@ -126,11 +126,17 @@ export function applyServerQueueState(
 
 function updateMediaSession(track: Track) {
   if (!('mediaSession' in navigator)) return;
+  const artwork: MediaImage[] = [];
+  if (track.coverUrl) {
+    // Must be an absolute URL — the OS fetches artwork outside the page context
+    const abs = new URL(track.coverUrl, window.location.href).href;
+    artwork.push({ src: abs, sizes: '300x300', type: 'image/jpeg' });
+  }
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.title,
     artist: track.artist,
     album: track.album,
-    artwork: track.coverUrl ? [{ src: track.coverUrl, sizes: '300x300', type: 'image/jpeg' }] : []
+    artwork
   });
 }
 
