@@ -149,13 +149,13 @@
     {#if showRecents}
       <div class="recents-dropdown">
         {#each recentSearches as recent}
-          <button class="recent-item" onclick={() => selectRecent(recent)}>
+          <div class="recent-item" role="button" tabindex="0" onclick={() => selectRecent(recent)} onkeydown={(e) => e.key === 'Enter' && selectRecent(recent)}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="var(--text-secondary)"><path d="M13 3a9 9 0 1 0 0 18A9 9 0 0 0 13 3zm0 16a7 7 0 1 1 0-14A7 7 0 0 1 13 19zm.5-11H12v6l5.25 3.15.75-1.23-4.5-2.67V8z"/></svg>
             <span>{recent}</span>
             <button class="recent-remove" onclick={(e) => removeRecentSearch(e, recent)} aria-label="Remove">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
             </button>
-          </button>
+          </div>
         {/each}
       </div>
     {/if}
@@ -286,13 +286,11 @@
     gap: 10px;
     width: 100%;
     padding: 11px 16px;
-    background: none;
-    border: none;
     color: var(--text-primary);
     font-size: 14px;
-    text-align: left;
     cursor: pointer;
     transition: background 0.1s;
+    user-select: none;
   }
 
   .recent-item:hover {
