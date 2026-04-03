@@ -33,7 +33,7 @@ A self-hosted music server that lets you search YouTube, cache tracks to your li
 **Prerequisites:** Docker and Docker Compose.
 
 ```bash
-git clone https://github.com/usr-wwelsh/music-server.git
+git clone https://github.com/usr-wwelsh/omnimux.git
 cd music-server
 ```
 
