@@ -130,7 +130,13 @@ function updateMediaSession(track: Track) {
   if (track.coverUrl) {
     // Must be an absolute URL — the OS fetches artwork outside the page context
     const abs = new URL(track.coverUrl, window.location.href).href;
-    artwork.push({ src: abs, sizes: '300x300', type: 'image/jpeg' });
+    artwork.push(
+      { src: abs, sizes: '96x96' },
+      { src: abs, sizes: '128x128' },
+      { src: abs, sizes: '192x192' },
+      { src: abs, sizes: '256x256' },
+      { src: abs, sizes: '512x512' },
+    );
   }
   navigator.mediaSession.metadata = new MediaMetadata({
     title: track.title,
