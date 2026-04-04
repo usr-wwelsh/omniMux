@@ -34,7 +34,7 @@ A self-hosted music server that lets you search YouTube, cache tracks to your li
 
 ```bash
 git clone https://github.com/usr-wwelsh/omnimux.git
-cd music-server
+cd omniMux
 ```
 
 Edit `docker-compose.yml` and set a real value for `JWT_SECRET`, then:
