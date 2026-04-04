@@ -234,21 +234,25 @@ def _extract_playlist(url: str) -> list[dict]:
         "quiet": True,
         "no_warnings": True,
         "extract_flat": "in_playlist",
+        "lazy_playlist": False,
         "skip_download": True,
         "ignoreerrors": True,
     }
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-        if not info:
-            return []
-        entries = info.get("entries", [])
-        # Flatten one level in case of nested playlist
-        flat = []
-        for e in entries:
-            if not e:
-                continue
-            if e.get("_type") == "playlist":
-                flat.extend(e.get("entries") or [])
-            else:
-                flat.append(e)
-        return flat
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if not info:
+                return []
+            entries = info.get("entries", []) or []
+            # Flatten one level in case of nested playlist
+            flat = []
+            for e in entries:
+                if not e:
+                    continue
+                if e.get("_type") == "playlist":
+                    flat.extend(e.get("entries") or [])
+                else:
+                    flat.append(e)
+            return flat
+    except Exception:
+        return []

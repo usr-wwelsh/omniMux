@@ -33,27 +33,30 @@ def search_youtube(query: str, limit: int = 20) -> list[SearchResult]:
     }
 
     results = []
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
-        entries = info.get("entries", []) if info else []
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+            entries = info.get("entries", []) if info else []
 
-        for entry in entries:
-            if not entry:
-                continue
-            youtube_id = entry.get("id", "")
-            title = entry.get("title", "Unknown")
-            artist = entry.get("channel", entry.get("uploader", "Unknown"))
-            duration = entry.get("duration") or 0
-            thumbnail = entry.get("thumbnail", entry.get("thumbnails", [{}])[0].get("url", "") if entry.get("thumbnails") else "")
+            for entry in entries:
+                if not entry:
+                    continue
+                youtube_id = entry.get("id", "")
+                title = entry.get("title", "Unknown")
+                artist = entry.get("channel", entry.get("uploader", "Unknown"))
+                duration = entry.get("duration") or 0
+                thumbnail = entry.get("thumbnail", entry.get("thumbnails", [{}])[0].get("url", "") if entry.get("thumbnails") else "")
 
-            results.append(SearchResult(
-                youtube_id=youtube_id,
-                title=title,
-                artist=artist,
-                duration=int(duration),
-                thumbnail_url=thumbnail,
-                url=f"https://www.youtube.com/watch?v={youtube_id}",
-            ))
+                results.append(SearchResult(
+                    youtube_id=youtube_id,
+                    title=title,
+                    artist=artist,
+                    duration=int(duration),
+                    thumbnail_url=thumbnail,
+                    url=f"https://www.youtube.com/watch?v={youtube_id}",
+                ))
+    except Exception:
+        pass
 
     results.sort(key=lambda r: 0 if "- topic" in r.artist.lower() else 1)
     return results
