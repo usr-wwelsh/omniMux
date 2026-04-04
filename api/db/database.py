@@ -6,7 +6,11 @@ from sqlalchemy.orm import DeclarativeBase
 DATA_DIR = os.environ.get("DATA_DIR", "./data")
 DATABASE_URL = f"sqlite+aiosqlite:///{DATA_DIR}/omnimux.db"
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args={"timeout": 30},  # wait up to 30s for SQLite write lock
+)
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 
 
@@ -18,6 +22,7 @@ async def init_db():
     from db.models import Download, TrackMapping  # noqa: F401
 
     async with engine.begin() as conn:
+        await conn.execute(text("PRAGMA journal_mode=WAL"))
         await conn.run_sync(Base.metadata.create_all)
         # Migrations: add columns if they don't exist yet
         for migration in [

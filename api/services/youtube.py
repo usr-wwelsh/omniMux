@@ -94,6 +94,7 @@ def get_youtube_album_tracks(artist: str, album: str) -> list[SearchResult]:
         "quiet": True,
         "no_warnings": True,
         "extract_flat": "in_playlist",
+        "lazy_playlist": False,
         "skip_download": True,
         "ignoreerrors": True,
     }
@@ -104,22 +105,25 @@ def get_youtube_album_tracks(artist: str, album: str) -> list[SearchResult]:
             if not info:
                 return []
             for entry in (info.get("entries") or []):
-                if not entry or not entry.get("id"):
+                try:
+                    if not entry or not entry.get("id"):
+                        continue
+                    youtube_id = entry["id"]
+                    title = entry.get("title", "Unknown")
+                    artist_name = entry.get("channel", entry.get("uploader", artist))
+                    duration = entry.get("duration") or 0
+                    thumbnails = entry.get("thumbnails") or []
+                    thumb = thumbnails[-1].get("url", "") if thumbnails else entry.get("thumbnail", "")
+                    results.append(SearchResult(
+                        youtube_id=youtube_id,
+                        title=title,
+                        artist=artist_name,
+                        duration=int(duration),
+                        thumbnail_url=thumb,
+                        url=f"https://www.youtube.com/watch?v={youtube_id}",
+                    ))
+                except Exception:
                     continue
-                youtube_id = entry["id"]
-                title = entry.get("title", "Unknown")
-                artist_name = entry.get("channel", entry.get("uploader", artist))
-                duration = entry.get("duration") or 0
-                thumbnails = entry.get("thumbnails") or []
-                thumb = thumbnails[-1].get("url", "") if thumbnails else entry.get("thumbnail", "")
-                results.append(SearchResult(
-                    youtube_id=youtube_id,
-                    title=title,
-                    artist=artist_name,
-                    duration=int(duration),
-                    thumbnail_url=thumb,
-                    url=f"https://www.youtube.com/watch?v={youtube_id}",
-                ))
     except Exception:
         pass
     return results
