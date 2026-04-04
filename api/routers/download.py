@@ -197,6 +197,11 @@ async def import_playlist(
         if not youtube_id:
             continue
 
+        # Skip deleted or private videos
+        title = entry.get("title") or "Unknown"
+        if title in ("[Deleted video]", "[Private video]"):
+            continue
+
         # Skip if already cached
         existing = await db.execute(
             select(TrackMapping).where(TrackMapping.youtube_id == youtube_id)
@@ -207,8 +212,8 @@ async def import_playlist(
         dl = Download(
             youtube_id=youtube_id,
             youtube_url=f"https://www.youtube.com/watch?v={youtube_id}",
-            title=entry.get("title", "Unknown"),
-            artist=entry.get("channel", entry.get("uploader", "Unknown")),
+            title=title,
+            artist=entry.get("channel") or entry.get("uploader") or "Unknown",
             status="queued",
             playlist_name=body.playlist_name or None,
             navidrome_username=user.username,
