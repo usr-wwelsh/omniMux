@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import { streamUrl, coverArtUrl, type Song } from '../subsonic';
+import { streamUrl, coverArtUrl, fetchItunesArtwork, type Song } from '../subsonic';
 import { api } from '../api';
 
 export interface Track {
@@ -13,6 +13,7 @@ export interface Track {
   duration: number;
   streamUrl?: string;
   coverUrl?: string;
+  hqCoverUrl?: string;
 }
 
 export const currentTrack = writable<Track | null>(null);
@@ -199,8 +200,11 @@ function getAudio(): HTMLAudioElement {
 }
 
 export async function songToTrack(song: Song): Promise<Track> {
-  const sUrl = await streamUrl(song.id);
-  const cUrl = song.coverArt ? await coverArtUrl(song.coverArt) : undefined;
+  const [sUrl, cUrl, hqUrl] = await Promise.all([
+    streamUrl(song.id),
+    song.coverArt ? coverArtUrl(song.coverArt) : Promise.resolve(undefined),
+    fetchItunesArtwork(song.artist, song.album),
+  ]);
   return {
     id: song.id,
     title: song.title,
@@ -212,6 +216,7 @@ export async function songToTrack(song: Song): Promise<Track> {
     duration: song.duration,
     streamUrl: sUrl,
     coverUrl: cUrl,
+    hqCoverUrl: hqUrl ?? undefined,
   };
 }
 

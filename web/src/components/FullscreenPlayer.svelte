@@ -49,14 +49,39 @@
     const dy = e.changedTouches[0].clientY - touchStartY;
     if (dy > 80) close();
   }
+
+  let artExpanded = $state(false);
+  const hasArt = $derived(!!($currentTrack?.coverUrl || $currentTrack?.hqCoverUrl));
+
+  function expandArt() {
+    if (hasArt) artExpanded = true;
+  }
+
+  function collapseArt() {
+    artExpanded = false;
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="fs-overlay"
+  class:art-mode={artExpanded}
   ontouchstart={onTouchStart}
   ontouchend={onTouchEnd}
 >
+
+  <!-- Full-screen art background (art-mode only) — clicking it collapses -->
+  {#if artExpanded && $currentTrack}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div class="fs-art-bg-wrap" onclick={collapseArt}>
+      <img
+        class="fs-art-bg"
+        src={$currentTrack.hqCoverUrl ?? $currentTrack.coverUrl}
+        alt=""
+      />
+    </div>
+  {/if}
+
   <!-- Header -->
   <div class="fs-header">
     <button class="fs-close" onclick={close}>
@@ -66,7 +91,14 @@
       <button class="fs-tab" class:active={tab === 'playing'} onclick={() => tab = 'playing'}>Now Playing</button>
       <button class="fs-tab" class:active={tab === 'queue'} onclick={() => tab = 'queue'}>Queue {#if $queue.length > 0}<span class="fs-tab-count">{$queue.length}</span>{/if}</button>
     </div>
-    <div style="width: 36px"></div>
+    {#if artExpanded}
+      <!-- Collapse art button in art-mode -->
+      <button class="fs-collapse-art" onclick={collapseArt} title="Exit art view">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>
+      </button>
+    {:else}
+      <div style="width: 36px"></div>
+    {/if}
   </div>
 
   {#if $currentTrack}
@@ -75,10 +107,11 @@
     <!-- Player panel (hidden on mobile when queue tab active) -->
     <div class="fs-player-panel" class:mobile-hidden={tab === 'queue'}>
 
-      <!-- Album art -->
-      <div class="fs-art-wrap">
-        {#if $currentTrack.coverUrl}
-          <img src={$currentTrack.coverUrl} alt="" class="fs-art" />
+      <!-- Album art square (hidden in art-mode — art is the background instead) -->
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <div class="fs-art-wrap" class:has-art={hasArt} onclick={expandArt}>
+        {#if hasArt}
+          <img src={$currentTrack.hqCoverUrl ?? $currentTrack.coverUrl} alt="" class="fs-art" />
         {:else}
           <div class="fs-art placeholder">
             <svg viewBox="0 0 24 24" width="80" height="80" fill="var(--text-subdued)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
@@ -151,18 +184,18 @@
 
       <!-- Volume -->
       <div class="fs-volume">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="var(--text-subdued)"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/><path d="M5 9v6h4l5 5V4L9 9H5zm7-.17v6.34L9.83 13H7v-2h2.83L12 8.83z"/></svg>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="fs-vol-icon"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/><path d="M5 9v6h4l5 5V4L9 9H5zm7-.17v6.34L9.83 13H7v-2h2.83L12 8.83z"/></svg>
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="fs-vol-bar" bind:this={volumeBar} onclick={handleVolumeClick}>
           <div class="fs-vol-fill" style="width: {$volume * 100}%"></div>
         </div>
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="var(--text-subdued)"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="fs-vol-icon"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
       </div>
 
     </div>
 
-    <!-- Queue panel (hidden on mobile when playing tab active) -->
+    <!-- Queue panel (hidden on mobile when playing tab active; always hidden in art-mode) -->
     <div class="fs-queue-panel" class:mobile-hidden={tab === 'playing'}>
       <QueuePanel />
     </div>
@@ -182,6 +215,91 @@
     overflow-y: auto;
     overscroll-behavior: contain;
   }
+
+  /* ── Art-mode: fullscreen background ── */
+  .fs-overlay.art-mode {
+    overflow: hidden;
+    background: #000;
+  }
+
+  .fs-art-bg-wrap {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    cursor: zoom-out;
+  }
+
+  .fs-art-bg {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+  }
+
+  /* Raise header and body above the art background */
+  .art-mode .fs-header,
+  .art-mode .fs-body {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header in art-mode: transparent, white text */
+  .art-mode .fs-header {
+    background: transparent;
+  }
+
+  .art-mode .fs-close,
+  .art-mode .fs-collapse-art {
+    color: rgba(255, 255, 255, 0.85);
+  }
+
+  /* Body in art-mode: fill remaining space, push controls to bottom */
+  .art-mode .fs-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* Art square hidden in art-mode */
+  .art-mode .fs-art-wrap {
+    display: none;
+  }
+
+  /* Queue hidden in art-mode */
+  .art-mode .fs-queue-panel {
+    display: none !important;
+  }
+
+  /* Player panel fills full width, anchors to bottom, gradient overlay */
+  .art-mode .fs-player-panel {
+    flex: 1 !important;
+    width: 100% !important;
+    max-width: none !important;
+    justify-content: flex-end !important;
+    padding: 0 48px 48px !important;
+    background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.6) 50%, transparent 100%);
+  }
+
+  /* Override art-mode colors for all text/controls */
+  .art-mode .fs-title { color: #fff; }
+  .art-mode .fs-artist { color: rgba(255, 255, 255, 0.7); }
+  .art-mode .fs-times { color: rgba(255, 255, 255, 0.5); }
+  .art-mode .fs-progress-bar { background: rgba(255, 255, 255, 0.2); }
+  .art-mode .fs-progress-fill { background: rgba(255, 255, 255, 0.9); }
+  .art-mode .fs-progress-thumb { background: #fff; }
+  .art-mode .fs-btn { color: #fff; }
+  .art-mode .fs-play-btn { background: rgba(255, 255, 255, 0.95); color: #000; }
+  .art-mode .fs-mode-btn { color: rgba(255, 255, 255, 0.45); }
+  .art-mode .fs-mode-btn.active { color: var(--accent); }
+  .art-mode .fs-vol-icon { color: rgba(255, 255, 255, 0.45); }
+  .art-mode .fs-vol-bar { background: rgba(255, 255, 255, 0.2); }
+  .art-mode .fs-vol-fill { background: rgba(255, 255, 255, 0.65); }
+  .art-mode .fs-volume { display: flex !important; }
+
+  /* ── Normal mode styles ── */
 
   .fs-header {
     display: flex;
@@ -227,10 +345,6 @@
     line-height: 1.4;
   }
 
-  .fs-tab.active .fs-tab-count {
-    background: var(--accent);
-  }
-
   .fs-close {
     color: var(--text-secondary);
     display: flex;
@@ -242,12 +356,15 @@
     color: var(--text-primary);
   }
 
-  .fs-label {
-    font-size: 13px;
-    font-weight: 600;
+  .fs-collapse-art {
     color: var(--text-secondary);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    display: flex;
+    padding: 4px;
+    transition: color 0.15s;
+  }
+
+  .fs-collapse-art:hover {
+    color: var(--text-primary);
   }
 
   .fs-body {
@@ -263,13 +380,11 @@
     align-items: center;
     gap: 24px;
     padding: 0 40px 40px;
-    /* mobile: full width single column */
     width: 100%;
   }
 
   .fs-queue-panel {
     overflow-y: auto;
-    /* mobile: full width single column */
     width: 100%;
   }
 
@@ -282,12 +397,22 @@
     max-width: 380px;
   }
 
+  .fs-art-wrap.has-art {
+    cursor: zoom-in;
+  }
+
   .fs-art {
     width: 100%;
     aspect-ratio: 1;
     border-radius: 12px;
     object-fit: cover;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+
+  .fs-art-wrap.has-art:hover .fs-art {
+    transform: scale(1.02);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65);
   }
 
   .fs-art.placeholder {
@@ -462,6 +587,11 @@
     width: 100%;
   }
 
+  .fs-vol-icon {
+    color: var(--text-subdued);
+    flex-shrink: 0;
+  }
+
   .fs-vol-bar {
     flex: 1;
     height: 4px;
@@ -483,9 +613,13 @@
     }
 
     .fs-header {
-      /* keep close button left-aligned without centering the now-absent tabs */
       justify-content: flex-start;
       gap: 0;
+    }
+
+    /* In art-mode on desktop, header stays space-between for the collapse button */
+    .art-mode .fs-header {
+      justify-content: space-between;
     }
 
     .fs-body {
@@ -498,7 +632,6 @@
       padding: 0 48px 48px;
     }
 
-    /* Override mobile-hidden on desktop so both panels are always visible */
     .fs-player-panel.mobile-hidden,
     .fs-queue-panel.mobile-hidden {
       display: flex;
@@ -526,6 +659,10 @@
 
     .fs-volume {
       display: none;
+    }
+
+    .art-mode .fs-player-panel {
+      padding: 0 24px 40px !important;
     }
   }
 </style>

@@ -66,11 +66,26 @@ export async function streamUrl(id: string): Promise<string> {
   return `${NAVIDROME_URL}/rest/stream.view?${params.toString()}`;
 }
 
-export async function coverArtUrl(id: string, size = 300): Promise<string> {
+export async function coverArtUrl(id: string, size = 800): Promise<string> {
   const params = await subsonicParams();
   params.set('id', id);
   params.set('size', size.toString());
   return `${NAVIDROME_URL}/rest/getCoverArt.view?${params.toString()}`;
+}
+
+export async function fetchItunesArtwork(artist: string, album: string): Promise<string | null> {
+  try {
+    const query = encodeURIComponent(`${artist} ${album}`);
+    const res = await fetch(`https://itunes.apple.com/search?term=${query}&entity=album&limit=5`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const result = data.results?.[0];
+    if (!result?.artworkUrl100) return null;
+    // Replace 100x100bb with 3000x3000bb for maximum quality
+    return (result.artworkUrl100 as string).replace('100x100bb', '3000x3000bb');
+  } catch {
+    return null;
+  }
 }
 
 export interface Playlist {
