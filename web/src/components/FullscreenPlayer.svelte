@@ -87,10 +87,14 @@
     <button class="fs-close" onclick={close}>
       <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/></svg>
     </button>
+    {#if !artExpanded}
     <div class="fs-tabs">
       <button class="fs-tab" class:active={tab === 'playing'} onclick={() => tab = 'playing'}>Now Playing</button>
       <button class="fs-tab" class:active={tab === 'queue'} onclick={() => tab = 'queue'}>Queue {#if $queue.length > 0}<span class="fs-tab-count">{$queue.length}</span>{/if}</button>
     </div>
+    {:else}
+    <div style="width: 0"></div>
+    {/if}
     {#if artExpanded}
       <!-- Collapse art button in art-mode -->
       <button class="fs-collapse-art" onclick={collapseArt} title="Exit art view">

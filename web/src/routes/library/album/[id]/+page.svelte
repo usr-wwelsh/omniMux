@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { page } from '$app/state';
   import { subsonic, coverArtUrl, type Album, type Song } from '$lib/subsonic';
   import { api, type YouTubeResult } from '$lib/api';
   import TrackList from '../../../../components/TrackList.svelte';
+
+  let { data } = $props();
 
   let album = $state<Album | null>(null);
   let songs = $state<Song[]>([]);
@@ -16,7 +17,7 @@
   let checkDone = $state(false);
 
   $effect(() => {
-    loadAlbum(page.params.id);
+    loadAlbum(data.albumId);
   });
 
   async function loadAlbum(id: string) {
