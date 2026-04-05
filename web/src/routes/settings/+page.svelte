@@ -7,6 +7,7 @@
     { value: 'win98', label: 'Win98', description: 'Silver & navy — classic Windows 98 vibes' },
     { value: 'bubblegum', label: 'Bubblegum', description: 'Flat light pink mono — sweet and simple' },
     { value: 'amber', label: 'Amber', description: 'Warm amber glow — old IBM monitor' },
+    { value: 'init-launcher', label: 'Init Launcher', description: 'Solaris CDE blue-gray with pink accent' },
   ];
 </script>
 
@@ -146,6 +147,11 @@
     background: #0A0700;
     border: 1px solid #FFB000;
     box-shadow: 0 0 6px #FFB00044;
+  }
+
+  [data-theme="init-launcher"] {
+    background: #6E7E8E;
+    border: 1px solid #C05870;
   }
 
   .theme-btn-label {

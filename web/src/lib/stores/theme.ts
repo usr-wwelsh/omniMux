@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 
-export type Theme = 'spotify' | 'waybar' | 'win98' | 'bubblegum' | 'amber';
+export type Theme = 'spotify' | 'waybar' | 'win98' | 'bubblegum' | 'amber' | 'init-launcher';
 
 const stored = browser ? (localStorage.getItem('theme') as Theme | null) : null;
 

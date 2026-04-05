@@ -77,6 +77,26 @@
   --mini-player-height: 56px;
 }
 
+/* init-launcher: Solaris CDE blue-gray with CDE pink accent */
+[data-theme="init-launcher"] {
+  --bg-primary: #6E7E8E;
+  --bg-secondary: #7A8B9A;
+  --bg-elevated: #5A6B7A;
+  --bg-highlight: #4A5A68;
+  --text-primary: #FFFFFF;
+  --text-secondary: #98AABB;
+  --text-subdued: #4A5A68;
+  --accent: #C05870;
+  --accent-hover: #D06880;
+  --danger: #C05870;
+  --border: #3A4A58;
+  --sidebar-width: 240px;
+  --now-playing-width: 340px;
+  --player-height: 72px;
+  --bottom-nav-height: 56px;
+  --mini-player-height: 56px;
+}
+
 /* Amber: amber phosphor terminal */
 [data-theme="amber"] {
   --bg-primary: #0A0700;
