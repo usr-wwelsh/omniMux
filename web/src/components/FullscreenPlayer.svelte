@@ -1,7 +1,7 @@
 <script lang="ts">
   import {
     currentTrack, isPlaying, currentTime, duration, volume,
-    shuffle, loop, togglePlay, seek, setVolume,
+    shuffle, loop, togglePlay, seek, seekOnActiveDevice, setVolume,
     playNext, playPrev, toggleShuffle, cycleLoop, formatTime,
     queue, activeDeviceId, localDeviceId, claimPlayback,
   } from '$lib/stores/player';
@@ -26,7 +26,11 @@
     if (!progressBar) return;
     const rect = progressBar.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    seek(pct * $duration);
+    if (isActivePlayer) {
+      seek(pct * $duration);
+    } else {
+      seekOnActiveDevice(pct * $duration);
+    }
   }
 
   function handleVolumeClick(e: MouseEvent) {
@@ -51,6 +55,21 @@
   }
 
   let artExpanded = $state(false);
+
+  // Tick currentTime forward every 250ms when watching another device play,
+  // so the progress bar advances smoothly between 1s device polls.
+  $effect(() => {
+    if (isActivePlayer) return; // active device drives its own timeupdate events
+    const interval = setInterval(() => {
+      if ($isPlaying) return; // active device is paused on this device too
+      // Advance if another device is playing
+      const activeSession = $otherDevices.find((d) => d.device_id === $activeDeviceId);
+      if (activeSession?.is_playing) {
+        currentTime.update((t) => Math.min(t + 0.25, $duration || Infinity));
+      }
+    }, 250);
+    return () => clearInterval(interval);
+  });
 
   // Persists the last successfully loaded art URL so old art shows while new art loads
   let displayedCoverUrl = $state<string | undefined>(undefined);

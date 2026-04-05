@@ -41,6 +41,8 @@ soloMode.subscribe((v) => {
 let audio: HTMLAudioElement | null = null;
 
 let _pushTimer: ReturnType<typeof setTimeout> | null = null;
+// Tracks the seek_issued_at of the last remote seek we applied, to avoid re-applying
+let _lastAppliedSeekIssuedAt = 0;
 
 // activeId: the device that should own playback after this push.
 // Pass localDeviceId to claim ownership, or pass the current activeDeviceId to preserve it.
@@ -74,6 +76,8 @@ export function applyServerQueueState(
   tracks: Track[],
   index: number,
   serverActiveDevice: string | null,
+  seekTo: number | null = null,
+  seekIssuedAt: number | null = null,
 ) {
   if (get(soloMode)) return;
   const myId = get(localDeviceId);
@@ -95,6 +99,11 @@ export function applyServerQueueState(
     if (index !== localIdx && index >= 0 && index < tracks.length) {
       queueIndex.set(index);
       playTrack(tracks[index]);
+    }
+    // Apply remote seek command from another device
+    if (seekTo !== null && seekIssuedAt !== null && seekIssuedAt > _lastAppliedSeekIssuedAt) {
+      _lastAppliedSeekIssuedAt = seekIssuedAt;
+      seek(seekTo);
     }
     return;
   }
@@ -200,10 +209,9 @@ function getAudio(): HTMLAudioElement {
 }
 
 export async function songToTrack(song: Song): Promise<Track> {
-  const [sUrl, cUrl, hqUrl] = await Promise.all([
+  const [sUrl, cUrl] = await Promise.all([
     streamUrl(song.id),
     song.coverArt ? coverArtUrl(song.coverArt) : Promise.resolve(undefined),
-    fetchItunesArtwork(song.artist, song.album),
   ]);
   return {
     id: song.id,
@@ -216,7 +224,6 @@ export async function songToTrack(song: Song): Promise<Track> {
     duration: song.duration,
     streamUrl: sUrl,
     coverUrl: cUrl,
-    hqCoverUrl: hqUrl ?? undefined,
   };
 }
 
@@ -237,6 +244,16 @@ export function playTrack(track: Track) {
     a.src = track.streamUrl;
     a.volume = get(volume);
     a.play();
+  }
+  // Fetch HQ art in the background — doesn't block playback
+  if (!track.hqCoverUrl) {
+    fetchItunesArtwork(track.artist, track.album).then((url) => {
+      if (!url) return;
+      // Only apply if this track is still current
+      if (get(currentTrack)?.id === track.id) {
+        currentTrack.update((t) => t ? { ...t, hqCoverUrl: url } : t);
+      }
+    });
   }
 }
 
@@ -291,6 +308,20 @@ export function claimPlayback() {
 export function seek(time: number) {
   const a = getAudio();
   a.currentTime = time;
+}
+
+// Sends a seek command to the active device (when this device is not the player)
+export function seekOnActiveDevice(time: number) {
+  const activeId = get(activeDeviceId);
+  if (!activeId) return;
+  const tracks = get(queue);
+  const index = get(queueIndex);
+  const issuedAt = Date.now() / 1000;
+  // Optimistically update local display
+  currentTime.set(time);
+  try {
+    api.setQueue(tracks, index, activeId, time, issuedAt);
+  } catch {}
 }
 
 export function setVolume(v: number) {

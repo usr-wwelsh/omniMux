@@ -38,6 +38,7 @@ class DeviceSession(BaseModel):
     track: TrackInfo | None = None
     is_playing: bool = False
     current_time: float = 0
+    updated_at: str = ''
 
 
 @router.put("/devices/heartbeat")
@@ -75,12 +76,16 @@ class QueueState(BaseModel):
     tracks: list[QueueTrack] = []
     index: int = -1
     active_device_id: str | None = None
+    seek_to: float | None = None
+    seek_issued_at: float | None = None
 
 
 class QueueSetRequest(BaseModel):
     tracks: list[QueueTrack]
     index: int
     active_device_id: str
+    seek_to: float | None = None
+    seek_issued_at: float | None = None
 
 
 @router.get("/queue", response_model=QueueState)
@@ -90,15 +95,21 @@ async def get_queue(user: UserContext = Depends(get_current_user)):
         tracks=[QueueTrack(**t) for t in q.get('tracks', [])],
         index=q.get('index', -1),
         active_device_id=q.get('active_device_id'),
+        seek_to=q.get('seek_to'),
+        seek_issued_at=q.get('seek_issued_at'),
     )
 
 
 @router.put("/queue")
 async def set_queue(body: QueueSetRequest, user: UserContext = Depends(get_current_user)):
+    existing = _queues.get(user.username, {})
     _queues[user.username] = {
         'tracks': [t.model_dump() for t in body.tracks],
         'index': body.index,
         'active_device_id': body.active_device_id,
+        # Only update seek fields if the new request includes them
+        'seek_to': body.seek_to if body.seek_to is not None else existing.get('seek_to'),
+        'seek_issued_at': body.seek_issued_at if body.seek_issued_at is not None else existing.get('seek_issued_at'),
     }
     return {"ok": True}
 
@@ -119,5 +130,6 @@ async def list_devices(
                 track=TrackInfo(**session["track"]) if session["track"] else None,
                 is_playing=session["is_playing"],
                 current_time=session["current_time"],
+                updated_at=session["updated_at"],
             ))
     return result

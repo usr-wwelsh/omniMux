@@ -84,6 +84,9 @@ export interface DeviceSession {
   track: DeviceTrackInfo | null;
   is_playing: boolean;
   current_time: number;
+  updated_at: string;
+  // Set client-side when the poll response was received, for position extrapolation
+  received_at_ms?: number;
 }
 
 export interface DeviceHeartbeat {
@@ -111,6 +114,8 @@ export interface QueueState {
   tracks: QueueTrack[];
   index: number;
   active_device_id: string | null;
+  seek_to: number | null;
+  seek_issued_at: number | null;
 }
 
 export interface TaggerTrack {
@@ -188,10 +193,10 @@ export const api = {
     return request('/api/queue');
   },
 
-  async setQueue(tracks: QueueTrack[], index: number, active_device_id: string): Promise<void> {
+  async setQueue(tracks: QueueTrack[], index: number, active_device_id: string, seek_to?: number, seek_issued_at?: number): Promise<void> {
     return request('/api/queue', {
       method: 'PUT',
-      body: JSON.stringify({ tracks, index, active_device_id }),
+      body: JSON.stringify({ tracks, index, active_device_id, seek_to: seek_to ?? null, seek_issued_at: seek_issued_at ?? null }),
     });
   },
 

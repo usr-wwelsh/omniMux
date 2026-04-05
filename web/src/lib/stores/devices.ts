@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { api, type DeviceSession } from '$lib/api';
-import { currentTrack, isPlaying, currentTime, playTrack, seek, localDeviceId, applyServerQueueState, type Track } from './player';
+import { currentTrack, isPlaying, currentTime, playTrack, seek, localDeviceId, activeDeviceId, applyServerQueueState, type Track } from './player';
 import { streamUrl } from '$lib/subsonic';
 
 export { type DeviceSession };
@@ -60,8 +60,24 @@ async function sendHeartbeat() {
 
 async function pollDevices() {
   try {
+    const receivedAt = Date.now();
     const all = await api.getDevices();
-    otherDevices.set(all.filter((d) => d.device_id !== myDeviceId));
+    const others = all
+      .filter((d) => d.device_id !== myDeviceId)
+      .map((d) => ({ ...d, received_at_ms: receivedAt }));
+    otherDevices.set(others);
+
+    // If another device is the active player, extrapolate its position into currentTime
+    // so the progress bar stays live without audio running here.
+    const activeId = get(activeDeviceId);
+    if (activeId && activeId !== myDeviceId) {
+      const activeDev = others.find((d) => d.device_id === activeId);
+      if (activeDev && activeDev.is_playing) {
+        const elapsed = (Date.now() - receivedAt) / 1000; // negligible on LAN
+        const extrapolated = activeDev.current_time + elapsed;
+        currentTime.set(extrapolated);
+      }
+    }
   } catch {}
 }
 
@@ -73,6 +89,8 @@ async function pollQueue() {
       state.tracks as Track[],
       state.index,
       state.active_device_id,
+      state.seek_to,
+      state.seek_issued_at,
     );
   } catch {}
 }
@@ -83,9 +101,9 @@ export function startDeviceSync() {
   sendHeartbeat();
   pollDevices();
   pollQueue();
-  heartbeatTimer = setInterval(sendHeartbeat, 5_000);
-  pollTimer = setInterval(pollDevices, 5_000);
-  queuePollTimer = setInterval(pollQueue, 5_000);
+  heartbeatTimer = setInterval(sendHeartbeat, 1_000);
+  pollTimer = setInterval(pollDevices, 1_000);
+  queuePollTimer = setInterval(pollQueue, 1_000);
 }
 
 export function stopDeviceSync() {
