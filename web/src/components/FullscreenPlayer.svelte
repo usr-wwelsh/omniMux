@@ -56,6 +56,27 @@
 
   let artExpanded = $state(false);
 
+  // Auto-hide controls in art-mode after 2s of no mouse/touch movement
+  let controlsVisible = $state(true);
+  let hideTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function showControls() {
+    controlsVisible = true;
+    if (hideTimer) clearTimeout(hideTimer);
+    if (artExpanded) {
+      hideTimer = setTimeout(() => { controlsVisible = false; }, 2000);
+    }
+  }
+
+  $effect(() => {
+    if (artExpanded) {
+      showControls();
+    } else {
+      controlsVisible = true;
+      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+    }
+  });
+
   // Tick currentTime forward every 250ms when watching another device play,
   // so the progress bar advances smoothly between 1s device polls.
   $effect(() => {
@@ -97,8 +118,11 @@
 <div
   class="fs-overlay"
   class:art-mode={artExpanded}
+  class:ui-hidden={artExpanded && !controlsVisible}
   ontouchstart={onTouchStart}
   ontouchend={onTouchEnd}
+  onmousemove={showControls}
+  ontouchmove={showControls}
 >
 
   <!-- Full-screen art background (art-mode only) — clicking it collapses -->
@@ -273,6 +297,18 @@
   .art-mode .fs-body {
     position: relative;
     z-index: 1;
+  }
+
+  /* Auto-hide controls in art-mode */
+  .art-mode .fs-header,
+  .art-mode .fs-player-panel {
+    transition: opacity 0.5s ease;
+  }
+
+  .art-mode.ui-hidden .fs-header,
+  .art-mode.ui-hidden .fs-player-panel {
+    opacity: 0;
+    pointer-events: none;
   }
 
   /* Header in art-mode: transparent, white text */
