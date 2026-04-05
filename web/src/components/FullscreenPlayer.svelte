@@ -51,7 +51,19 @@
   }
 
   let artExpanded = $state(false);
-  const hasArt = $derived(!!($currentTrack?.coverUrl || $currentTrack?.hqCoverUrl));
+
+  // Persists the last successfully loaded art URL so old art shows while new art loads
+  let displayedCoverUrl = $state<string | undefined>(undefined);
+
+  $effect(() => {
+    const src = $currentTrack?.hqCoverUrl ?? $currentTrack?.coverUrl;
+    if (!src) return;
+    const img = new Image();
+    img.onload = () => { displayedCoverUrl = src; };
+    img.src = src;
+  });
+
+  const hasArt = $derived(!!displayedCoverUrl);
 
   function expandArt() {
     if (hasArt) artExpanded = true;
@@ -71,14 +83,10 @@
 >
 
   <!-- Full-screen art background (art-mode only) — clicking it collapses -->
-  {#if artExpanded && $currentTrack}
+  {#if artExpanded && displayedCoverUrl}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="fs-art-bg-wrap" onclick={collapseArt}>
-      <img
-        class="fs-art-bg"
-        src={$currentTrack.hqCoverUrl ?? $currentTrack.coverUrl}
-        alt=""
-      />
+      <img class="fs-art-bg" src={displayedCoverUrl} alt="" />
     </div>
   {/if}
 
@@ -114,8 +122,8 @@
       <!-- Album art square (hidden in art-mode — art is the background instead) -->
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div class="fs-art-wrap" class:has-art={hasArt} onclick={expandArt}>
-        {#if hasArt}
-          <img src={$currentTrack.hqCoverUrl ?? $currentTrack.coverUrl} alt="" class="fs-art" />
+        {#if displayedCoverUrl}
+          <img src={displayedCoverUrl} alt="" class="fs-art" />
         {:else}
           <div class="fs-art placeholder">
             <svg viewBox="0 0 24 24" width="80" height="80" fill="var(--text-subdued)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
