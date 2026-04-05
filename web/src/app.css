@@ -1,4 +1,5 @@
-:root {
+:root,
+[data-theme="spotify"] {
   --bg-primary: #121212;
   --bg-secondary: #181818;
   --bg-elevated: #282828;
@@ -10,6 +11,85 @@
   --accent-hover: #1ed760;
   --danger: #e74c3c;
   --border: #333333;
+  --sidebar-width: 240px;
+  --now-playing-width: 340px;
+  --player-height: 72px;
+  --bottom-nav-height: 56px;
+  --mini-player-height: 56px;
+}
+
+[data-theme="waybar"] {
+  --bg-primary: #3B3E47;
+  --bg-secondary: #3B3E47;
+  --bg-elevated: #3B3E47;
+  --bg-highlight: #3B3E47;
+  --text-primary: #B8B8B8;
+  --text-secondary: #B8B8B8;
+  --text-subdued: #B8B8B8;
+  --accent: #B8B8B8;
+  --accent-hover: #FFFFFF;
+  --danger: #e74c3c;
+  --border: #333333;
+  --sidebar-width: 240px;
+  --now-playing-width: 340px;
+  --player-height: 72px;
+  --bottom-nav-height: 56px;
+  --mini-player-height: 56px;
+}
+
+/* Win98: silver panels, navy accents */
+[data-theme="win98"] {
+  --bg-primary: #008080;
+  --bg-secondary: #C0C0C0;
+  --bg-elevated: #D4D0C8;
+  --bg-highlight: #000080;
+  --text-primary: #000000;
+  --text-secondary: #333333;
+  --text-subdued: #808080;
+  --accent: #000080;
+  --accent-hover: #0000CD;
+  --danger: #FF0000;
+  --border: #808080;
+  --sidebar-width: 240px;
+  --now-playing-width: 340px;
+  --player-height: 72px;
+  --bottom-nav-height: 56px;
+  --mini-player-height: 56px;
+}
+
+/* Bubblegum: airy blush pink */
+[data-theme="bubblegum"] {
+  --bg-primary: #FDF0F4;
+  --bg-secondary: #F8E4EC;
+  --bg-elevated: #F2D6E4;
+  --bg-highlight: #EAC8D8;
+  --text-primary: #7A2440;
+  --text-secondary: #A85870;
+  --text-subdued: #C898B0;
+  --accent: #C03860;
+  --accent-hover: #A02850;
+  --danger: #D02040;
+  --border: #EDD4E0;
+  --sidebar-width: 240px;
+  --now-playing-width: 340px;
+  --player-height: 72px;
+  --bottom-nav-height: 56px;
+  --mini-player-height: 56px;
+}
+
+/* Amber: amber phosphor terminal */
+[data-theme="amber"] {
+  --bg-primary: #0A0700;
+  --bg-secondary: #0F0900;
+  --bg-elevated: #1A1200;
+  --bg-highlight: #2E1F00;
+  --text-primary: #FFB000;
+  --text-secondary: #CC8800;
+  --text-subdued: #7A5000;
+  --accent: #FFB000;
+  --accent-hover: #FFD040;
+  --danger: #FF4400;
+  --border: #3A2800;
   --sidebar-width: 240px;
   --now-playing-width: 340px;
   --player-height: 72px;

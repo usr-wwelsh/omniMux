@@ -10,6 +10,11 @@
   import NowPlaying from '../components/NowPlaying.svelte';
   import { startDeviceSync, stopDeviceSync } from '$lib/stores/devices';
   import { showFullscreenPlayer } from '$lib/stores/ui';
+  import { theme } from '$lib/stores/theme';
+
+  $effect(() => {
+    document.documentElement.setAttribute('data-theme', $theme);
+  });
   import FullscreenPlayer from '../components/FullscreenPlayer.svelte';
 
   let { children } = $props();
