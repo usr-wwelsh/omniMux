@@ -48,6 +48,7 @@
 
   .nav-tab {
     flex: 1;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -57,9 +58,32 @@
     font-size: 10px;
     font-weight: 600;
     transition: color 0.15s;
+    overflow: hidden;
+  }
+
+  .nav-tab span {
+    width: 100%;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .nav-tab:hover, .nav-tab.active {
     color: var(--text-primary);
+  }
+
+  .nav-tab svg {
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 400px) {
+    .nav-tab svg {
+      width: 20px;
+      height: 20px;
+    }
+    .nav-tab {
+      font-size: 9px;
+    }
   }
 </style>
