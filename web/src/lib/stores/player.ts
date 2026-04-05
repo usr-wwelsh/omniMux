@@ -180,7 +180,7 @@ function setupMediaSession() {
   });
 }
 
-function getAudio(): HTMLAudioElement {
+export function getAudio(): HTMLAudioElement {
   if (!audio && typeof window !== 'undefined') {
     audio = new Audio();
     audio.addEventListener('timeupdate', () => {

@@ -9,6 +9,10 @@
   import { showFullscreenPlayer } from '$lib/stores/ui';
   import { goto } from '$app/navigation';
   import QueuePanel from './QueuePanel.svelte';
+  import {
+    visMode, type VisMode, getAnalyser, resumeContext,
+    fillFrequencyData, bassFromBuf, midFromBuf, overallFromBuf,
+  } from '$lib/stores/visualizer';
 
   let tab = $state<'playing' | 'queue'>('playing');
 
@@ -55,6 +59,17 @@
   }
 
   let artExpanded = $state(false);
+
+  const VIS_MODES: VisMode[] = ['off', 'pan', 'pulse', 'warp', 'ripple'];
+
+  // Visualizer state
+  let visCanvas: HTMLCanvasElement | undefined = $state();
+  let artImg: HTMLImageElement | undefined = $state();
+  let imgNaturalW = $state(0);
+  let imgNaturalH = $state(0);
+  let rafId: number | null = null;
+  let freqBuf: Uint8Array<ArrayBuffer> | null = null;
+  let imgBitmap: ImageBitmap | null = null;
 
   // Auto-hide controls in art-mode after 2s of no mouse/touch movement
   let controlsVisible = $state(true);
@@ -105,6 +120,160 @@
 
   const hasArt = $derived(!!displayedCoverUrl);
 
+  // Pan direction: horizontal if art is wider relative to viewport than viewport itself
+  const panHorizontal = $derived(
+    imgNaturalW > 0 && imgNaturalH > 0 &&
+    (imgNaturalW / imgNaturalH) > (typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1)
+  );
+
+  // Load natural dimensions for pan direction detection
+  $effect(() => {
+    const src = displayedCoverUrl;
+    if (!src) return;
+    const img = new Image();
+    img.onload = () => {
+      imgNaturalW = img.naturalWidth;
+      imgNaturalH = img.naturalHeight;
+    };
+    img.src = src;
+  });
+
+  // Create ImageBitmap for canvas-based visualizers
+  $effect(() => {
+    const src = displayedCoverUrl;
+    if (!src) return;
+    let alive = true;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      if (!alive) return;
+      createImageBitmap(img).then((bm) => {
+        if (!alive) { bm.close(); return; }
+        imgBitmap?.close();
+        imgBitmap = bm;
+      }).catch(() => {
+        // CORS or decode failure — canvas modes will render nothing gracefully
+        imgBitmap?.close();
+        imgBitmap = null;
+      });
+    };
+    img.src = src;
+    return () => { alive = false; };
+  });
+
+  // Canvas sizing (half-resolution for performance)
+  $effect(() => {
+    if (!visCanvas) return;
+    function resize() {
+      if (!visCanvas) return;
+      visCanvas.width = Math.round(window.innerWidth / 2);
+      visCanvas.height = Math.round(window.innerHeight / 2);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  });
+
+  // RAF lifecycle — start/stop based on artExpanded and visMode
+  $effect(() => {
+    const mode = $visMode;
+    if (!artExpanded || mode === 'off' || mode === 'pan') {
+      stopRaf();
+      // Reset pulse scale when leaving pulse mode
+      if (artImg) artImg.style.transform = '';
+      return;
+    }
+    resumeContext();
+    const analyser = getAnalyser();
+    if (!analyser) return;
+    if (!freqBuf) freqBuf = new Uint8Array(analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
+    startRaf(mode, analyser);
+    return () => {
+      stopRaf();
+      if (artImg) artImg.style.transform = '';
+    };
+  });
+
+  function stopRaf() {
+    if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+  }
+
+  function startRaf(mode: VisMode, analyser: AnalyserNode) {
+    stopRaf();
+    function frame() {
+      fillFrequencyData(analyser, freqBuf!);
+      if (mode === 'pulse') drawPulse();
+      else if (mode === 'warp') drawWarp();
+      else if (mode === 'ripple') drawRipple();
+      rafId = requestAnimationFrame(frame);
+    }
+    rafId = requestAnimationFrame(frame);
+  }
+
+  function drawPulse() {
+    if (!artImg) return;
+    const bass = bassFromBuf(freqBuf!);
+    const scale = 1 + bass * 0.1;
+    artImg.style.transform = `scale(${scale.toFixed(4)})`;
+    artImg.style.transition = 'none';
+  }
+
+  function drawWarp() {
+    if (!visCanvas || !imgBitmap) return;
+    const ctx = visCanvas.getContext('2d')!;
+    const W = visCanvas.width;
+    const H = visCanvas.height;
+    const bw = imgBitmap.width;
+    const bh = imgBitmap.height;
+    const mid = midFromBuf(freqBuf!);
+    const amplitude = mid * 30;
+    const timeOffset = performance.now() * 0.001;
+    ctx.clearRect(0, 0, W, H);
+    for (let y = 0; y < H; y += 2) {
+      const dx = Math.sin(y * 0.025 + timeOffset) * amplitude;
+      ctx.drawImage(imgBitmap, 0, (y / H) * bh, bw, (bh / H) * 2, dx, y, W, 2);
+    }
+  }
+
+  function drawRipple() {
+    if (!visCanvas || !imgBitmap) return;
+    const ctx = visCanvas.getContext('2d', { willReadFrequently: true })!;
+    const W = visCanvas.width;
+    const H = visCanvas.height;
+    ctx.drawImage(imgBitmap, 0, 0, W, H);
+    const src = ctx.getImageData(0, 0, W, H);
+    const dst = ctx.createImageData(W, H);
+    const energy = overallFromBuf(freqBuf!);
+    const time = performance.now() * 0.002;
+    const cx = W / 2;
+    const cy = H / 2;
+    const maxDist = Math.sqrt(cx * cx + cy * cy);
+    const waveAmp = energy * 18;
+    const sd = src.data;
+    const dd = dst.data;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const dx = x - cx;
+        const dy = y - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        let nx = x;
+        let ny = y;
+        if (dist > 0) {
+          const displace = Math.sin(dist * 0.06 - time) * waveAmp * (1 - dist / maxDist);
+          nx = Math.round(x + (dx / dist) * displace);
+          ny = Math.round(y + (dy / dist) * displace);
+        }
+        const si = (Math.max(0, Math.min(H - 1, ny)) * W + Math.max(0, Math.min(W - 1, nx))) * 4;
+        const di = (y * W + x) * 4;
+        dd[di]     = sd[si];
+        dd[di + 1] = sd[si + 1];
+        dd[di + 2] = sd[si + 2];
+        dd[di + 3] = sd[si + 3];
+      }
+    }
+    ctx.putImageData(dst, 0, 0);
+  }
+
   function expandArt() {
     if (hasArt) artExpanded = true;
   }
@@ -129,7 +298,20 @@
   {#if artExpanded && displayedCoverUrl}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="fs-art-bg-wrap" onclick={collapseArt}>
-      <img class="fs-art-bg" src={displayedCoverUrl} alt="" />
+      <img
+        class="fs-art-bg"
+        class:vis-pan={$visMode === 'pan'}
+        class:vis-pan-h={$visMode === 'pan' && panHorizontal}
+        class:vis-pan-v={$visMode === 'pan' && !panHorizontal}
+        class:vis-hidden={$visMode === 'warp' || $visMode === 'ripple'}
+        src={displayedCoverUrl}
+        alt=""
+        bind:this={artImg}
+      />
+      {#if $visMode === 'warp' || $visMode === 'ripple'}
+        <!-- svelte-ignore a11y_click_events_have_key_events -->
+        <canvas class="fs-vis-canvas" bind:this={visCanvas}></canvas>
+      {/if}
     </div>
   {/if}
 
@@ -173,6 +355,21 @@
           </div>
         {/if}
       </div>
+
+      <!-- Visualizer mode picker (art-mode only) -->
+      {#if artExpanded}
+        <div class="vis-mode-picker">
+          {#each VIS_MODES as m}
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <button
+              class="vis-mode-btn"
+              class:active={$visMode === m}
+              onclick={(e) => { e.stopPropagation(); visMode.set(m); }}
+            >{m.charAt(0).toUpperCase() + m.slice(1)}</button>
+          {/each}
+        </div>
+      {/if}
 
       <!-- Track info -->
       <div class="fs-info">
@@ -282,6 +479,7 @@
     inset: 0;
     z-index: 0;
     cursor: zoom-out;
+    overflow: hidden;
   }
 
   .fs-art-bg {
@@ -290,6 +488,86 @@
     object-fit: cover;
     object-position: center;
     display: block;
+  }
+
+  /* Pan (Ken Burns) mode */
+  .fs-art-bg.vis-pan {
+    object-fit: unset;
+    position: absolute;
+  }
+
+  .fs-art-bg.vis-pan-h {
+    height: 100%;
+    width: auto;
+    min-width: unset;
+    top: 0;
+    left: 0;
+    animation: pan-h 25s ease-in-out infinite alternate;
+  }
+
+  .fs-art-bg.vis-pan-v {
+    width: 100%;
+    height: auto;
+    min-height: unset;
+    top: 0;
+    left: 0;
+    animation: pan-v 25s ease-in-out infinite alternate;
+  }
+
+  @keyframes pan-h {
+    from { transform: translateX(0); }
+    to   { transform: translateX(calc(-100% + 100vw)); }
+  }
+
+  @keyframes pan-v {
+    from { transform: translateY(0); }
+    to   { transform: translateY(calc(-100% + 100vh)); }
+  }
+
+  /* Hide image when canvas visualizer is active */
+  .fs-art-bg.vis-hidden {
+    display: none;
+  }
+
+  /* Canvas overlay for warp/ripple */
+  .fs-vis-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    display: block;
+  }
+
+  /* Visualizer mode picker */
+  .vis-mode-picker {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .vis-mode-btn {
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    transition: background 0.15s, color 0.15s;
+    cursor: pointer;
+  }
+
+  .vis-mode-btn:hover {
+    color: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.18);
+  }
+
+  .vis-mode-btn.active {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.4);
   }
 
   /* Raise header and body above the art background */
