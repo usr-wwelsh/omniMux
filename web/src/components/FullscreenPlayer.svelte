@@ -16,14 +16,10 @@
   } from '$lib/stores/visualizer';
 
   // ── WebGL visualizer ─────────────────────────────────────────────────────
+  type ProgLocs = Record<string, WebGLUniformLocation | null>;
   interface GLState {
     gl: WebGL2RenderingContext;
-    warpProg: WebGLProgram;
-    rippleProg: WebGLProgram;
-    warpTimeLoc: WebGLUniformLocation;
-    warpAmpLoc: WebGLUniformLocation;
-    rippleTimeLoc: WebGLUniformLocation;
-    rippleAmpLoc: WebGLUniformLocation;
+    progs: Record<string, { prog: WebGLProgram; locs: ProgLocs }>;
     tex: WebGLTexture;
     vao: WebGLVertexArrayObject;
   }
@@ -59,9 +55,238 @@ void main() {
   vec2 d = vUv - vec2(0.5);
   float dist = length(d);
   float envelope = max(0.0, 1.0 - dist / 0.7071);
-  float displace = sin(dist * 16.0 - uTime) * uAmp * envelope;
+  float displace = sin(dist * 16.0 - uTime * 2.0) * uAmp * envelope;
   vec2 dir = dist > 0.001 ? d / dist : vec2(0.0);
   outColor = texture(uTex, clamp(vUv + dir * displace, 0.0, 1.0));
+}`;
+
+  const _TUNNEL_FS = `#version 300 es
+precision mediump float;
+uniform sampler2D uTex;
+uniform float uTime;
+uniform float uBass;
+uniform float uAspect;
+in vec2 vUv;
+out vec4 outColor;
+void main() {
+  vec2 p = (vUv - 0.5) * vec2(uAspect * 1.4, 1.4);
+  float a = atan(p.y, p.x) / 6.28318 + 0.5;
+  float r = length(p);
+  float depth = 0.35 / max(r, 0.001);
+  float speed = 0.22 + uBass * 0.6;
+  vec2 tuv = vec2(a, fract(depth - uTime * speed));
+  float vignette = 1.0 - smoothstep(0.35, 1.1, r);
+  outColor = texture(uTex, tuv) * vignette;
+}`;
+
+  const _FRACTAL_FS = `#version 300 es
+precision mediump float;
+uniform sampler2D uTex;
+uniform float uTime;
+uniform float uBass;
+uniform float uMid;
+in vec2 vUv;
+out vec4 outColor;
+void main() {
+  vec2 z = (vUv - 0.5) * 3.0;
+  float a = uTime * 0.22;
+  vec2 c = vec2(-0.7 + cos(a) * (0.15 + uBass * 0.25),
+                 0.27 + sin(a * 0.7) * (0.1 + uMid * 0.2));
+  const int MAX = 48;
+  int iters = MAX;
+  for (int i = 0; i < MAX; i++) {
+    if (dot(z, z) > 4.0) { iters = i; break; }
+    z = vec2(z.x*z.x - z.y*z.y + c.x, 2.0*z.x*z.y + c.y);
+  }
+  if (iters == MAX) { outColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  float t = float(iters) / float(MAX);
+  outColor = texture(uTex, vec2(t, 0.5 + sin(t * 6.28318 + uTime * 0.4) * 0.45));
+}`;
+
+  const _KALEIDOSCOPE_FS = `#version 300 es
+precision mediump float;
+uniform sampler2D uTex;
+uniform float uTime;
+uniform float uBass;
+in vec2 vUv;
+out vec4 outColor;
+void main() {
+  vec2 p = vUv - 0.5;
+  float r = length(p);
+  float a = atan(p.y, p.x) + uTime * 0.12;
+  float segs = 6.0 + floor(uBass * 6.0);
+  float seg = 3.14159 / segs;
+  a = mod(a, 2.0 * seg);
+  if (a > seg) a = 2.0 * seg - a;
+  vec2 uv = vec2(r * cos(a) + 0.5, r * sin(a) + 0.5);
+  outColor = texture(uTex, fract(uv));
+}`;
+
+  const _DROSTE_FS = `#version 300 es
+precision mediump float;
+uniform sampler2D uTex;
+uniform float uTime;
+uniform float uOverall;
+in vec2 vUv;
+out vec4 outColor;
+void main() {
+  vec2 p = vUv - 0.5;
+  float r = length(p);
+  if (r < 0.001) { outColor = texture(uTex, vUv); return; }
+  float a = atan(p.y, p.x) / 6.28318 + 0.5;
+  float logR = (log(r) + 4.5) / 4.5;
+  float scroll = uTime * 0.1 * (0.5 + uOverall * 0.5);
+  float zoom = fract(logR * 1.5 - scroll);
+  outColor = texture(uTex, vec2(a, zoom));
+}`;
+
+  const _VORTEX_FS = `#version 300 es
+precision mediump float;
+uniform sampler2D uTex;
+uniform float uTime;
+uniform float uBass;
+in vec2 vUv;
+out vec4 outColor;
+void main() {
+  vec2 p = vUv - 0.5;
+  float r = length(p);
+  float a = atan(p.y, p.x);
+  float swirl = exp(-r * 2.5) * uTime * 0.5 * (1.0 + uBass * 4.0);
+  a += swirl;
+  vec2 uv = clamp(vec2(r * cos(a) + 0.5, r * sin(a) + 0.5), 0.0, 1.0);
+  outColor = texture(uTex, uv);
+}`;
+
+  const _GLITCH_FS = `#version 300 es
+precision mediump float;
+uniform sampler2D uTex;
+uniform float uTime;
+uniform float uBass;
+in vec2 vUv;
+out vec4 outColor;
+void main() {
+  float scanline = floor(vUv.y * 80.0) / 80.0;
+  float seed = floor(uTime * 6.0);
+  float n = fract(sin(scanline * 127.1 + seed * 311.7) * 43758.5);
+  float glitch = step(1.0 - max(uBass * 0.5, 0.05), n);
+  float shift = (n * 2.0 - 1.0) * glitch * 0.07;
+  float chrom = 0.008 * glitch;
+  float r = texture(uTex, vec2(fract(vUv.x + shift + chrom), vUv.y)).r;
+  float g = texture(uTex, vec2(fract(vUv.x + shift),         vUv.y)).g;
+  float b = texture(uTex, vec2(fract(vUv.x + shift - chrom), vUv.y)).b;
+  outColor = vec4(r, g, b, 1.0);
+}`;
+
+  const _CRYSTAL_FS = `#version 300 es
+precision mediump float;
+uniform sampler2D uTex;
+uniform float uTime;
+uniform float uBass;
+in vec2 vUv;
+out vec4 outColor;
+vec2 hash22(vec2 p) {
+  vec3 q = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+  q += dot(q, q.yzx + 33.33);
+  return fract((q.xx + q.yz) * q.zy);
+}
+void main() {
+  float scale = 3.0 + uBass * 4.0;
+  vec2 st  = vUv * scale;
+  vec2 ist = floor(st);
+  vec2 fst = fract(st);
+  float md = 9.0;
+  vec2 cc = vec2(0.0);
+  for (int y = -1; y <= 1; y++) {
+    for (int x = -1; x <= 1; x++) {
+      vec2 nb = vec2(float(x), float(y));
+      vec2 pt = hash22(ist + nb);
+      pt = 0.5 + 0.5 * sin(uTime * 0.35 + 6.2831 * pt);
+      vec2 d = nb + pt - fst;
+      float dist = length(d);
+      if (dist < md) { md = dist; cc = ist + nb + pt; }
+    }
+  }
+  vec2 suv = clamp(cc / scale, 0.0, 1.0);
+  float edge = 1.0 - smoothstep(0.0, 0.07, md);
+  outColor = texture(uTex, suv) * (1.0 - edge * 0.85);
+}`;
+
+  const _AURORA_FS = `#version 300 es
+precision mediump float;
+uniform sampler2D uTex;
+uniform float uTime;
+uniform float uOverall;
+in vec2 vUv;
+out vec4 outColor;
+float hash(float n) { return fract(sin(n) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p);
+  f = f*f*(3.0 - 2.0*f);
+  return mix(mix(hash(i.x + i.y*57.0), hash(i.x+1.0 + i.y*57.0), f.x),
+             mix(hash(i.x + (i.y+1.0)*57.0), hash(i.x+1.0 + (i.y+1.0)*57.0), f.x), f.y);
+}
+void main() {
+  vec4 art = texture(uTex, vUv);
+  float n1 = noise(vec2(vUv.x * 3.5 + uTime * 0.18, uTime * 0.07));
+  float n2 = noise(vec2(vUv.x * 5.0 - uTime * 0.13, uTime * 0.04 + 1.7));
+  float curtain = smoothstep(0.3, 0.85, n1) * smoothstep(0.25, 0.8, n2);
+  vec3 c1 = vec3(0.0, 1.0, 0.45);
+  vec3 c2 = vec3(0.1, 0.3, 1.0);
+  vec3 c3 = vec3(0.9, 0.0, 0.9);
+  vec3 aurora = mix(mix(c1, c2, n2), c3, n1 * 0.4);
+  float intensity = curtain * (0.35 + uOverall * 0.65);
+  outColor = vec4(art.rgb + aurora * intensity * 0.8, 1.0);
+}`;
+
+  const _PLASMA_FS = `#version 300 es
+precision mediump float;
+uniform sampler2D uTex;
+uniform float uTime;
+uniform float uBass;
+uniform float uMid;
+in vec2 vUv;
+out vec4 outColor;
+void main() {
+  float t = uTime * 0.5;
+  vec2 uv = vUv * 2.5;
+  float v = sin(uv.x * (2.0 + uMid*1.5) + t)
+          + sin(uv.y * (2.0 + uBass*1.5) + t*0.9)
+          + sin((uv.x + uv.y)*2.0 + t*1.2)
+          + sin(length(uv - vec2(1.25))*(3.0 + uMid*3.0) - t*1.4);
+  float hue = v * 0.125 + 0.5;
+  vec3 c = 0.5 + 0.5*cos(6.28318*(hue + vec3(0.0, 0.333, 0.667)));
+  vec4 art = texture(uTex, vUv);
+  outColor = vec4(mix(art.rgb, c, 0.4 + uBass * 0.3), 1.0);
+}`;
+
+  const _SPHERE_FS = `#version 300 es
+precision mediump float;
+uniform sampler2D uTex;
+uniform float uTime;
+uniform float uBass;
+uniform float uAspect;
+in vec2 vUv;
+out vec4 outColor;
+void main() {
+  vec2 p = (vUv - 0.5) * vec2(uAspect * 2.0, 2.0);
+  vec3 ro = vec3(0.0, 0.0, 2.8);
+  vec3 rd = normalize(vec3(p, -2.0));
+  float b = dot(ro, rd);
+  float c = dot(ro, ro) - 1.0;
+  float h = b*b - c;
+  if (h < 0.0) { outColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  float t = -b - sqrt(h);
+  vec3 hit = ro + rd * t;
+  float rot = uTime * 0.1 * (1.0 + uBass * 0.5);
+  float cr = cos(rot), sr = sin(rot);
+  vec3 rh = vec3(hit.x*cr - hit.z*sr, hit.y, hit.x*sr + hit.z*cr);
+  float phi   = atan(rh.z, rh.x) / 6.28318 + 0.5;
+  float theta = acos(clamp(rh.y, -1.0, 1.0)) / 3.14159;
+  vec4 col = texture(uTex, vec2(phi, theta));
+  vec3 light = normalize(vec3(1.2, 0.8, 0.5));
+  float diff = max(dot(hit, light), 0.0);
+  float spec = pow(max(dot(reflect(-light, hit), normalize(ro)), 0.0), 24.0);
+  outColor = col * (0.2 + 0.8*diff) + vec4(vec3(spec * 0.25), 0.0);
 }`;
 
   function initWebGL(canvas: HTMLCanvasElement): GLState | null {
@@ -81,18 +306,26 @@ void main() {
       gl.linkProgram(prog);
       return prog;
     }
-    function getLocs(prog: WebGLProgram) {
+    function getUniformLocs(prog: WebGLProgram): ProgLocs {
       gl.useProgram(prog);
       gl.uniform1i(gl.getUniformLocation(prog, 'uTex'), 0);
-      return {
-        time: gl.getUniformLocation(prog, 'uTime') as WebGLUniformLocation,
-        amp:  gl.getUniformLocation(prog, 'uAmp')  as WebGLUniformLocation,
-      };
+      const locs: ProgLocs = {};
+      for (const n of ['uTime','uBass','uMid','uOverall','uAmp','uAspect']) {
+        locs[n] = gl.getUniformLocation(prog, n);
+      }
+      return locs;
     }
-    const warpProg   = makeProgram(_VS, _WARP_FS);
-    const rippleProg = makeProgram(_VS, _RIPPLE_FS);
-    const wL = getLocs(warpProg);
-    const rL = getLocs(rippleProg);
+    const shaderSrcs: Record<string, string> = {
+      warp: _WARP_FS, ripple: _RIPPLE_FS,
+      tunnel: _TUNNEL_FS, fractal: _FRACTAL_FS, kaleidoscope: _KALEIDOSCOPE_FS,
+      droste: _DROSTE_FS, vortex: _VORTEX_FS, glitch: _GLITCH_FS,
+      crystal: _CRYSTAL_FS, aurora: _AURORA_FS, plasma: _PLASMA_FS, sphere: _SPHERE_FS,
+    };
+    const progs: GLState['progs'] = {};
+    for (const [name, fs] of Object.entries(shaderSrcs)) {
+      const prog = makeProgram(_VS, fs);
+      progs[name] = { prog, locs: getUniformLocs(prog) };
+    }
     const vao = gl.createVertexArray()!;
     gl.bindVertexArray(vao);
     const buf = gl.createBuffer()!;
@@ -108,7 +341,7 @@ void main() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([128,128,128,255]));
-    return { gl, warpProg, rippleProg, warpTimeLoc: wL.time, warpAmpLoc: wL.amp, rippleTimeLoc: rL.time, rippleAmpLoc: rL.amp, tex, vao };
+    return { gl, progs, tex, vao };
   }
 
   function uploadTexture(gs: GLState, bitmap: ImageBitmap): void {
@@ -117,31 +350,29 @@ void main() {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
   }
 
-  function drawWarpGL(): void {
-    if (!glState) return;
-    const { gl, warpProg, warpTimeLoc, warpAmpLoc, tex, vao } = glState;
-    const amp = (midFromBuf(freqBuf!) * 30) / gl.drawingBufferWidth;
+  function drawGL(mode: string): void {
+    if (!glState || !freqBuf) return;
+    const { gl, progs, tex, vao } = glState;
+    const entry = progs[mode];
+    if (!entry) return;
+    const { prog, locs } = entry;
+    const t    = performance.now() * 0.001;
+    const bass = bassFromBuf(freqBuf);
+    const mid  = midFromBuf(freqBuf);
+    const overall = overallFromBuf(freqBuf);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-    gl.useProgram(warpProg);
+    gl.useProgram(prog);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.uniform1f(warpTimeLoc, performance.now() * 0.001);
-    gl.uniform1f(warpAmpLoc, amp);
-    gl.bindVertexArray(vao);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
-    gl.bindVertexArray(null);
-  }
-
-  function drawRippleGL(): void {
-    if (!glState) return;
-    const { gl, rippleProg, rippleTimeLoc, rippleAmpLoc, tex, vao } = glState;
-    const amp = (overallFromBuf(freqBuf!) * 18) / gl.drawingBufferWidth;
-    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-    gl.useProgram(rippleProg);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, tex);
-    gl.uniform1f(rippleTimeLoc, performance.now() * 0.002);
-    gl.uniform1f(rippleAmpLoc, amp);
+    const set = (n: string, v: number) => { const l = locs[n]; if (l != null) gl.uniform1f(l, v); };
+    set('uTime',    t);
+    set('uBass',    bass);
+    set('uMid',     mid);
+    set('uOverall', overall);
+    set('uAspect',  gl.drawingBufferWidth / gl.drawingBufferHeight);
+    // Legacy amp uniforms for warp/ripple shaders
+    if (mode === 'warp')   set('uAmp', (mid * 30) / gl.drawingBufferWidth);
+    if (mode === 'ripple') set('uAmp', (overall * 18) / gl.drawingBufferWidth);
     gl.bindVertexArray(vao);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.bindVertexArray(null);
@@ -193,7 +424,8 @@ void main() {
 
   let artExpanded = $state(false);
 
-  const VIS_MODES: VisMode[] = ['off', 'pan', 'pulse', 'warp', 'ripple'];
+  const VIS_MODES: VisMode[] = ['off', 'pan', 'pulse', 'warp', 'ripple', 'tunnel', 'fractal', 'kaleidoscope', 'droste', 'vortex', 'glitch', 'crystal', 'aurora', 'plasma', 'sphere'];
+  const CANVAS_MODES = new Set<VisMode>(['warp', 'ripple', 'tunnel', 'fractal', 'kaleidoscope', 'droste', 'vortex', 'glitch', 'crystal', 'aurora', 'plasma', 'sphere']);
 
   // Visualizer state
   let visCanvas: HTMLCanvasElement | undefined = $state();
@@ -255,10 +487,11 @@ void main() {
   });
 
   const hasArt = $derived(!!displayedCoverUrl);
+  const isCanvasMode = $derived(CANVAS_MODES.has($visMode));
 
   // React to external requests to enter art mode (e.g. from Auto DJ toggle)
   $effect(() => {
-    if ($artExpandRequested > 0 && hasArt) artExpanded = true;
+    if ($artExpandRequested > 0 && hasArt) expandArt();
   });
 
   // Pan direction: horizontal if art is wider relative to viewport than viewport itself
@@ -355,8 +588,7 @@ void main() {
       lastFrame = now;
       fillFrequencyData(analyser, freqBuf!);
       if (mode === 'pulse') drawPulse();
-      else if (mode === 'warp') drawWarpGL();
-      else if (mode === 'ripple') drawRippleGL();
+      else drawGL(mode);
     }
     rafId = requestAnimationFrame(frame);
   }
@@ -371,12 +603,34 @@ void main() {
 
 
   function expandArt() {
-    if (hasArt) artExpanded = true;
+    if (!hasArt) return;
+    artExpanded = true;
+    document.documentElement.requestFullscreen?.().catch(() => {});
   }
 
   function collapseArt() {
     artExpanded = false;
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   }
+
+  // Sync artExpanded when browser exits fullscreen via Esc or other means
+  $effect(() => {
+    function onFullscreenChange() {
+      if (!document.fullscreenElement && artExpanded) artExpanded = false;
+    }
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  });
+
+  // Esc key exits art mode
+  $effect(() => {
+    if (!artExpanded) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') collapseArt();
+    }
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  });
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -399,12 +653,12 @@ void main() {
         class:vis-pan={$visMode === 'pan'}
         class:vis-pan-h={$visMode === 'pan' && panHorizontal}
         class:vis-pan-v={$visMode === 'pan' && !panHorizontal}
-        class:vis-hidden={$visMode === 'warp' || $visMode === 'ripple'}
+        class:vis-hidden={isCanvasMode}
         src={displayedCoverUrl}
         alt=""
         bind:this={artImg}
       />
-      {#if $visMode === 'warp' || $visMode === 'ripple'}
+      {#if isCanvasMode}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <canvas class="fs-vis-canvas" bind:this={visCanvas}></canvas>
       {/if}

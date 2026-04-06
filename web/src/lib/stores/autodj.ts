@@ -6,7 +6,7 @@ import {
   songToTrack, addToQueue,
   startCrossfade, stopCrossfade, registerCrossfadeChecker, preloadCrossfadeTrack,
 } from './player';
-import { visMode, type VisMode } from './visualizer';
+import { visMode, type VisMode, startAutoGain, stopAutoGain } from './visualizer';
 import { showFullscreenPlayer, artExpandRequested } from './ui';
 
 // ── Persisted settings ────────────────────────────────────────────────────────
@@ -116,7 +116,7 @@ function stopQueueMonitor() {
 
 // ── Visualizer cycling ────────────────────────────────────────────────────────
 
-const VIS_CYCLE: VisMode[] = ['pan', 'pulse', 'warp', 'ripple'];
+const VIS_CYCLE: VisMode[] = ['pan', 'pulse', 'warp', 'ripple', 'tunnel', 'fractal', 'kaleidoscope', 'droste', 'vortex', 'glitch', 'crystal', 'aurora', 'plasma', 'sphere'];
 let _visCycleTimer: ReturnType<typeof setInterval> | null = null;
 let _visCycleTrackUnsub: (() => void) | null = null;
 let _visCycleFirstFire = true;
@@ -203,6 +203,7 @@ export function toggleAutoDJ() {
     registerCrossfadeChecker(crossfadeCheck);
     startQueueMonitor();
     startVisCycler();
+    startAutoGain();
     fillQueue();
   } else {
     registerCrossfadeChecker(null);
@@ -211,6 +212,7 @@ export function toggleAutoDJ() {
     _preloadTriggered = false;
     stopQueueMonitor();
     stopVisCycler();
+    stopAutoGain();
   }
 }
 
