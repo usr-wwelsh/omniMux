@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { api, type DeviceSession } from '$lib/api';
 import { currentTrack, isPlaying, currentTime, playTrack, seek, localDeviceId, activeDeviceId, applyServerQueueState, type Track } from './player';
+import { artModeActive } from './ui';
 import { streamUrl } from '$lib/subsonic';
 
 export { type DeviceSession };
@@ -41,6 +42,7 @@ export const otherDevices = writable<DeviceSession[]>([]);
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let queuePollTimer: ReturnType<typeof setInterval> | null = null;
+let artModeUnsubscribe: (() => void) | null = null;
 let myDeviceId = '';
 
 async function sendHeartbeat() {
@@ -95,21 +97,31 @@ async function pollQueue() {
   } catch {}
 }
 
+function restartTimers(slow: boolean) {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  if (pollTimer) clearInterval(pollTimer);
+  if (queuePollTimer) clearInterval(queuePollTimer);
+  const ms = slow ? 5_000 : 1_000;
+  heartbeatTimer = setInterval(sendHeartbeat, ms);
+  pollTimer = setInterval(pollDevices, ms);
+  queuePollTimer = setInterval(pollQueue, ms);
+}
+
 export function startDeviceSync() {
   myDeviceId = getOrCreateDeviceId();
   localDeviceId.set(myDeviceId);
   sendHeartbeat();
   pollDevices();
   pollQueue();
-  heartbeatTimer = setInterval(sendHeartbeat, 1_000);
-  pollTimer = setInterval(pollDevices, 1_000);
-  queuePollTimer = setInterval(pollQueue, 1_000);
+  restartTimers(false);
+  artModeUnsubscribe = artModeActive.subscribe((active) => restartTimers(active));
 }
 
 export function stopDeviceSync() {
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   if (pollTimer) clearInterval(pollTimer);
   if (queuePollTimer) clearInterval(queuePollTimer);
+  artModeUnsubscribe?.();
 }
 
 export async function listenHere(session: DeviceSession) {

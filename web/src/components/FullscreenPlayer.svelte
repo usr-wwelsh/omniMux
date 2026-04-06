@@ -6,13 +6,145 @@
     queue, activeDeviceId, localDeviceId, claimPlayback,
   } from '$lib/stores/player';
   import { otherDevices } from '$lib/stores/devices';
-  import { showFullscreenPlayer } from '$lib/stores/ui';
+  import { showFullscreenPlayer, artModeActive } from '$lib/stores/ui';
   import { goto } from '$app/navigation';
   import QueuePanel from './QueuePanel.svelte';
   import {
     visMode, type VisMode, getAnalyser, resumeContext,
     fillFrequencyData, bassFromBuf, midFromBuf, overallFromBuf,
   } from '$lib/stores/visualizer';
+
+  // ── WebGL visualizer ─────────────────────────────────────────────────────
+  interface GLState {
+    gl: WebGL2RenderingContext;
+    warpProg: WebGLProgram;
+    rippleProg: WebGLProgram;
+    warpTimeLoc: WebGLUniformLocation;
+    warpAmpLoc: WebGLUniformLocation;
+    rippleTimeLoc: WebGLUniformLocation;
+    rippleAmpLoc: WebGLUniformLocation;
+    tex: WebGLTexture;
+    vao: WebGLVertexArrayObject;
+  }
+
+  const _VS = `#version 300 es
+layout(location=0) in vec2 aPos;
+out vec2 vUv;
+void main() {
+  vUv = vec2(aPos.x * 0.5 + 0.5, 0.5 - aPos.y * 0.5);
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+
+  const _WARP_FS = `#version 300 es
+precision mediump float;
+uniform sampler2D uTex;
+uniform float uTime;
+uniform float uAmp;
+in vec2 vUv;
+out vec4 outColor;
+void main() {
+  float dx = sin(vUv.y * 12.566 + uTime) * uAmp;
+  outColor = texture(uTex, vec2(clamp(vUv.x + dx, 0.0, 1.0), vUv.y));
+}`;
+
+  const _RIPPLE_FS = `#version 300 es
+precision mediump float;
+uniform sampler2D uTex;
+uniform float uTime;
+uniform float uAmp;
+in vec2 vUv;
+out vec4 outColor;
+void main() {
+  vec2 d = vUv - vec2(0.5);
+  float dist = length(d);
+  float envelope = max(0.0, 1.0 - dist / 0.7071);
+  float displace = sin(dist * 16.0 - uTime) * uAmp * envelope;
+  vec2 dir = dist > 0.001 ? d / dist : vec2(0.0);
+  outColor = texture(uTex, clamp(vUv + dir * displace, 0.0, 1.0));
+}`;
+
+  function initWebGL(canvas: HTMLCanvasElement): GLState | null {
+    const glNullable = canvas.getContext('webgl2');
+    if (!glNullable) return null;
+    const gl = glNullable;
+    function compile(type: number, src: string): WebGLShader {
+      const sh = gl.createShader(type)!;
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      return sh;
+    }
+    function makeProgram(vs: string, fs: string): WebGLProgram {
+      const prog = gl.createProgram()!;
+      gl.attachShader(prog, compile(gl.VERTEX_SHADER, vs));
+      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fs));
+      gl.linkProgram(prog);
+      return prog;
+    }
+    function getLocs(prog: WebGLProgram) {
+      gl.useProgram(prog);
+      gl.uniform1i(gl.getUniformLocation(prog, 'uTex'), 0);
+      return {
+        time: gl.getUniformLocation(prog, 'uTime') as WebGLUniformLocation,
+        amp:  gl.getUniformLocation(prog, 'uAmp')  as WebGLUniformLocation,
+      };
+    }
+    const warpProg   = makeProgram(_VS, _WARP_FS);
+    const rippleProg = makeProgram(_VS, _RIPPLE_FS);
+    const wL = getLocs(warpProg);
+    const rL = getLocs(rippleProg);
+    const vao = gl.createVertexArray()!;
+    gl.bindVertexArray(vao);
+    const buf = gl.createBuffer()!;
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+    gl.bindVertexArray(null);
+    const tex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([128,128,128,255]));
+    return { gl, warpProg, rippleProg, warpTimeLoc: wL.time, warpAmpLoc: wL.amp, rippleTimeLoc: rL.time, rippleAmpLoc: rL.amp, tex, vao };
+  }
+
+  function uploadTexture(gs: GLState, bitmap: ImageBitmap): void {
+    const { gl, tex } = gs;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
+  }
+
+  function drawWarpGL(): void {
+    if (!glState) return;
+    const { gl, warpProg, warpTimeLoc, warpAmpLoc, tex, vao } = glState;
+    const amp = (midFromBuf(freqBuf!) * 30) / gl.drawingBufferWidth;
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.useProgram(warpProg);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.uniform1f(warpTimeLoc, performance.now() * 0.001);
+    gl.uniform1f(warpAmpLoc, amp);
+    gl.bindVertexArray(vao);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.bindVertexArray(null);
+  }
+
+  function drawRippleGL(): void {
+    if (!glState) return;
+    const { gl, rippleProg, rippleTimeLoc, rippleAmpLoc, tex, vao } = glState;
+    const amp = (overallFromBuf(freqBuf!) * 18) / gl.drawingBufferWidth;
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.useProgram(rippleProg);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.uniform1f(rippleTimeLoc, performance.now() * 0.002);
+    gl.uniform1f(rippleAmpLoc, amp);
+    gl.bindVertexArray(vao);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    gl.bindVertexArray(null);
+  }
 
   let tab = $state<'playing' | 'queue'>('playing');
 
@@ -70,6 +202,7 @@
   let rafId: number | null = null;
   let freqBuf: Uint8Array<ArrayBuffer> | null = null;
   let imgBitmap: ImageBitmap | null = null;
+  let glState: GLState | null = null;
 
   // Auto-hide controls in art-mode after 2s of no mouse/touch movement
   let controlsVisible = $state(true);
@@ -91,6 +224,8 @@
       if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
     }
   });
+
+  $effect(() => { artModeActive.set(artExpanded); });
 
   // Tick currentTime forward every 250ms when watching another device play,
   // so the progress bar advances smoothly between 1s device polls.
@@ -151,6 +286,7 @@
         if (!alive) { bm.close(); return; }
         imgBitmap?.close();
         imgBitmap = bm;
+        if (glState) uploadTexture(glState, bm);
       }).catch(() => {
         // CORS or decode failure — canvas modes will render nothing gracefully
         imgBitmap?.close();
@@ -161,17 +297,22 @@
     return () => { alive = false; };
   });
 
-  // Canvas sizing (half-resolution for performance)
+  // Canvas sizing (quarter-resolution — WebGL bilinear upscaling via CSS) + GL init/teardown
   $effect(() => {
-    if (!visCanvas) return;
+    if (!visCanvas) { glState = null; return; }
     function resize() {
       if (!visCanvas) return;
-      visCanvas.width = Math.round(window.innerWidth / 2);
-      visCanvas.height = Math.round(window.innerHeight / 2);
+      visCanvas.width = Math.round(window.innerWidth / 4);
+      visCanvas.height = Math.round(window.innerHeight / 4);
     }
     resize();
     window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
+    glState = initWebGL(visCanvas);
+    if (glState && imgBitmap) uploadTexture(glState, imgBitmap);
+    return () => {
+      window.removeEventListener('resize', resize);
+      glState = null;
+    };
   });
 
   // RAF lifecycle — start/stop based on artExpanded and visMode
@@ -200,12 +341,16 @@
 
   function startRaf(mode: VisMode, analyser: AnalyserNode) {
     stopRaf();
-    function frame() {
+    const FRAME_MS = 1000 / 30; // cap at 30fps
+    let lastFrame = 0;
+    function frame(now: number) {
+      rafId = requestAnimationFrame(frame);
+      if (now - lastFrame < FRAME_MS) return;
+      lastFrame = now;
       fillFrequencyData(analyser, freqBuf!);
       if (mode === 'pulse') drawPulse();
-      else if (mode === 'warp') drawWarp();
-      else if (mode === 'ripple') drawRipple();
-      rafId = requestAnimationFrame(frame);
+      else if (mode === 'warp') drawWarpGL();
+      else if (mode === 'ripple') drawRippleGL();
     }
     rafId = requestAnimationFrame(frame);
   }
@@ -218,61 +363,6 @@
     artImg.style.transition = 'none';
   }
 
-  function drawWarp() {
-    if (!visCanvas || !imgBitmap) return;
-    const ctx = visCanvas.getContext('2d')!;
-    const W = visCanvas.width;
-    const H = visCanvas.height;
-    const bw = imgBitmap.width;
-    const bh = imgBitmap.height;
-    const mid = midFromBuf(freqBuf!);
-    const amplitude = mid * 30;
-    const timeOffset = performance.now() * 0.001;
-    ctx.clearRect(0, 0, W, H);
-    for (let y = 0; y < H; y += 2) {
-      const dx = Math.sin(y * 0.025 + timeOffset) * amplitude;
-      ctx.drawImage(imgBitmap, 0, (y / H) * bh, bw, (bh / H) * 2, dx, y, W, 2);
-    }
-  }
-
-  function drawRipple() {
-    if (!visCanvas || !imgBitmap) return;
-    const ctx = visCanvas.getContext('2d', { willReadFrequently: true })!;
-    const W = visCanvas.width;
-    const H = visCanvas.height;
-    ctx.drawImage(imgBitmap, 0, 0, W, H);
-    const src = ctx.getImageData(0, 0, W, H);
-    const dst = ctx.createImageData(W, H);
-    const energy = overallFromBuf(freqBuf!);
-    const time = performance.now() * 0.002;
-    const cx = W / 2;
-    const cy = H / 2;
-    const maxDist = Math.sqrt(cx * cx + cy * cy);
-    const waveAmp = energy * 18;
-    const sd = src.data;
-    const dd = dst.data;
-    for (let y = 0; y < H; y++) {
-      for (let x = 0; x < W; x++) {
-        const dx = x - cx;
-        const dy = y - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        let nx = x;
-        let ny = y;
-        if (dist > 0) {
-          const displace = Math.sin(dist * 0.06 - time) * waveAmp * (1 - dist / maxDist);
-          nx = Math.round(x + (dx / dist) * displace);
-          ny = Math.round(y + (dy / dist) * displace);
-        }
-        const si = (Math.max(0, Math.min(H - 1, ny)) * W + Math.max(0, Math.min(W - 1, nx))) * 4;
-        const di = (y * W + x) * 4;
-        dd[di]     = sd[si];
-        dd[di + 1] = sd[si + 1];
-        dd[di + 2] = sd[si + 2];
-        dd[di + 3] = sd[si + 3];
-      }
-    }
-    ctx.putImageData(dst, 0, 0);
-  }
 
   function expandArt() {
     if (hasArt) artExpanded = true;
