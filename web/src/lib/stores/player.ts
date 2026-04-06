@@ -99,9 +99,16 @@ export function applyServerQueueState(
       localTracks.length !== tracks.length ||
       localTracks.some((t, i) => t.id !== tracks[i]?.id);
     if (changed) {
+      const curIdx = get(queueIndex);
+      const prevTrackId = localTracks[curIdx]?.id;
       queue.set(tracks);
-      const localIdx = get(queueIndex);
-      if (localIdx >= tracks.length) queueIndex.set(tracks.length - 1);
+      if (curIdx >= tracks.length) queueIndex.set(tracks.length - 1);
+      // Same index but different track — another device replaced the queue at this position
+      if (index === curIdx && index >= 0 && index < tracks.length &&
+          tracks[index].id !== prevTrackId) {
+        playTrack(tracks[index]);
+        return;
+      }
     }
     // Apply remote index change (another device skipped / played a new queue)
     const localIdx = get(queueIndex);

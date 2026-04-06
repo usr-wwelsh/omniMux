@@ -9,6 +9,7 @@
   import MiniPlayer from '../components/MiniPlayer.svelte';
   import NowPlaying from '../components/NowPlaying.svelte';
   import { startDeviceSync, stopDeviceSync } from '$lib/stores/devices';
+  import { initSettingsSync, resetSettingsSync } from '$lib/stores/settingsSync';
   import { showFullscreenPlayer } from '$lib/stores/ui';
   import { theme } from '$lib/stores/theme';
 
@@ -39,7 +40,11 @@
   $effect(() => {
     if ($auth.authenticated) {
       startDeviceSync();
-      return () => stopDeviceSync();
+      initSettingsSync();
+      return () => {
+        stopDeviceSync();
+        resetSettingsSync();
+      };
     }
   });
 

@@ -35,6 +35,14 @@ class Download(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+
+    username: Mapped[str] = mapped_column(String(200), primary_key=True)
+    data: Mapped[str] = mapped_column(Text, default='{}')
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class TrackMapping(Base):
     __tablename__ = "track_mappings"
 

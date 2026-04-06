@@ -225,4 +225,15 @@ export const api = {
       body: JSON.stringify({ file_paths }),
     });
   },
+
+  async getSettings(): Promise<Record<string, string>> {
+    return request('/api/settings');
+  },
+
+  async putSettings(data: Record<string, string>): Promise<void> {
+    return request('/api/settings', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
 };
