@@ -14,6 +14,7 @@ export interface Track {
   streamUrl?: string;
   coverUrl?: string;
   hqCoverUrl?: string;
+  bpm?: number;
 }
 
 export const currentTrack = writable<Track | null>(null);
@@ -39,6 +40,14 @@ soloMode.subscribe((v) => {
 });
 
 let audio: HTMLAudioElement | null = null;
+let crossfadeAudio: HTMLAudioElement | null = null;
+let _isCrossfading = false;
+let _crossfadeRafId: number | null = null;
+let _crossfadeChecker: ((ct: number, dur: number) => void) | null = null;
+
+export function registerCrossfadeChecker(fn: ((ct: number, dur: number) => void) | null) {
+  _crossfadeChecker = fn;
+}
 
 let _pushTimer: ReturnType<typeof setTimeout> | null = null;
 // Tracks the seek_issued_at of the last remote seek we applied, to avoid re-applying
@@ -192,9 +201,10 @@ export function getAudio(): HTMLAudioElement {
           position: audio!.currentTime
         });
       }
+      _crossfadeChecker?.(audio!.currentTime, audio!.duration);
     });
     audio.addEventListener('durationchange', () => duration.set(audio!.duration || 0));
-    audio.addEventListener('ended', () => playNext());
+    audio.addEventListener('ended', () => { if (!_isCrossfading) playNext(); });
     audio.addEventListener('pause', () => {
       isPlaying.set(false);
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
@@ -224,6 +234,7 @@ export async function songToTrack(song: Song): Promise<Track> {
     duration: song.duration,
     streamUrl: sUrl,
     coverUrl: cUrl,
+    bpm: song.bpm,
   };
 }
 
@@ -326,11 +337,14 @@ export function seekOnActiveDevice(time: number) {
 
 export function setVolume(v: number) {
   volume.set(v);
-  const a = getAudio();
-  a.volume = v;
+  if (!_isCrossfading) {
+    const a = getAudio();
+    a.volume = v;
+  }
 }
 
 export function playNext() {
+  if (_isCrossfading) return;
   const q = get(queue);
   const idx = get(queueIndex);
   const loopMode = get(loop);
@@ -470,4 +484,135 @@ export function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// Preload the next track onto crossfadeAudio silently so it's buffered
+// before the crossfade window begins. Call this ~10s before the fade.
+export function preloadCrossfadeTrack(track: Track) {
+  if (!track.streamUrl || typeof window === 'undefined') return;
+  if (!crossfadeAudio) crossfadeAudio = new Audio();
+  const cf = crossfadeAudio;
+  if (cf.src === track.streamUrl) return; // already loaded
+  cf.src = track.streamUrl;
+  cf.volume = 0;
+  cf.playbackRate = 1.0;
+  cf.play().catch(() => {});
+}
+
+export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatch: boolean) {
+  if (_isCrossfading) return;
+  const q = get(queue);
+  const nextTrack = q[nextIdx];
+  if (!nextTrack?.streamUrl) return;
+
+  _isCrossfading = true;
+
+  if (!crossfadeAudio && typeof window !== 'undefined') {
+    crossfadeAudio = new Audio();
+  }
+  if (!crossfadeAudio) return;
+
+  const cf = crossfadeAudio;
+
+  // Hard pitch snap to match BPM
+  const currentBpm = get(currentTrack)?.bpm;
+  const nextBpm = nextTrack.bpm;
+  const startPlaybackRate = (doBeatmatch && currentBpm && nextBpm && nextBpm > 0)
+    ? currentBpm / nextBpm
+    : 1.0;
+  cf.playbackRate = startPlaybackRate;
+
+  function beginFade() {
+    const startTime = performance.now();
+    const totalMs = durationSecs * 1000;
+    const primary = getAudio();
+    const startVol = primary.volume;
+
+    function fade(now: number) {
+      const t = Math.min((now - startTime) / totalMs, 1);
+      const eased = t * t * (3 - 2 * t); // smoothstep
+      const vol = get(volume);
+      primary.volume = (1 - eased) * startVol;
+      cf.volume = eased * vol;
+      cf.playbackRate = startPlaybackRate + (1.0 - startPlaybackRate) * eased;
+
+      if (t < 1) {
+        _crossfadeRafId = requestAnimationFrame(fade);
+      } else {
+        // Transfer playback back to primary (keeps Web Audio analyser chain intact)
+        const transferTime = cf.currentTime;
+        primary.src = nextTrack.streamUrl!;
+        primary.volume = 0;
+        // Wait for primary to buffer before surfacing it
+        function onReady() {
+          primary.currentTime = transferTime;
+          primary.playbackRate = 1.0;
+          primary.volume = get(volume);
+          primary.play();
+          cf.pause();
+          cf.src = '';
+          cf.volume = 0;
+          cf.playbackRate = 1.0;
+          _isCrossfading = false;
+          _crossfadeRafId = null;
+        }
+        if (primary.readyState >= 3) {
+          onReady();
+        } else {
+          primary.addEventListener('canplay', onReady, { once: true });
+          primary.play().catch(() => {});
+        }
+
+        queueIndex.set(nextIdx);
+        currentTrack.set(nextTrack);
+        updateMediaSession(nextTrack);
+        // Claim ownership and push new index to server so device polling
+        // doesn't revert back to the old track index
+        const myId = get(localDeviceId);
+        if (myId) activeDeviceId.set(myId);
+        schedulePushQueue(myId || get(activeDeviceId) || '');
+
+        if (!nextTrack.hqCoverUrl) {
+          fetchItunesArtwork(nextTrack.artist, nextTrack.album).then((url) => {
+            if (!url) return;
+            if (get(currentTrack)?.id === nextTrack.id) {
+              currentTrack.update((t) => t ? { ...t, hqCoverUrl: url } : t);
+            }
+          });
+        }
+      }
+    }
+    _crossfadeRafId = requestAnimationFrame(fade);
+  }
+
+  // If already preloaded and playing, start fade immediately
+  if (cf.src === nextTrack.streamUrl && !cf.paused) {
+    cf.volume = 0;
+    beginFade();
+  } else {
+    // Load and play, then begin fade
+    if (cf.src !== nextTrack.streamUrl) {
+      cf.src = nextTrack.streamUrl;
+      cf.volume = 0;
+    }
+    cf.play().then(beginFade).catch(() => { _isCrossfading = false; });
+  }
+}
+
+export function stopCrossfade() {
+  if (_crossfadeRafId !== null) {
+    cancelAnimationFrame(_crossfadeRafId);
+    _crossfadeRafId = null;
+  }
+  if (crossfadeAudio) {
+    crossfadeAudio.pause();
+    crossfadeAudio.src = '';
+    crossfadeAudio.volume = 0;
+    crossfadeAudio.playbackRate = 1.0;
+  }
+  _isCrossfading = false;
+  if (audio) {
+    audio.volume = get(volume);
+    audio.playbackRate = 1.0;
+  }
 }

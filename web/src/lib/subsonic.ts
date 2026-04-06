@@ -126,6 +126,7 @@ export interface Song {
   track?: number;
   year?: number;
   genre?: string;
+  bpm?: number;
 }
 
 export const subsonic = {
@@ -199,6 +200,7 @@ export const subsonic = {
         track: s.track,
         year: s.year,
         genre: s.genre,
+        bpm: s.bpm || undefined,
       })),
     };
   },
@@ -218,6 +220,7 @@ export const subsonic = {
         id: s.id, title: s.title, artist: s.artist, artistId: s.artistId,
         album: s.album, albumId: s.albumId, coverArt: s.coverArt,
         duration: s.duration || 0, track: s.track, year: s.year, genre: s.genre,
+        bpm: s.bpm || undefined,
       })),
     };
   },
@@ -252,6 +255,7 @@ export const subsonic = {
       id: s.id, title: s.title, artist: s.artist, artistId: s.artistId,
       album: s.album, albumId: s.albumId, coverArt: s.coverArt,
       duration: s.duration || 0, track: s.track, year: s.year, genre: s.genre,
+      bpm: s.bpm || undefined,
     }));
   },
 
@@ -289,6 +293,7 @@ export const subsonic = {
         id: s.id, title: s.title, artist: s.artist, artistId: s.artistId,
         album: s.album, albumId: s.albumId, coverArt: s.coverArt,
         duration: s.duration || 0, track: s.track, year: s.year, genre: s.genre,
+        bpm: s.bpm || undefined,
       })),
     };
   },

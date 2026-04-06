@@ -6,7 +6,8 @@
     queue, activeDeviceId, localDeviceId, claimPlayback,
   } from '$lib/stores/player';
   import { otherDevices } from '$lib/stores/devices';
-  import { showFullscreenPlayer, artModeActive } from '$lib/stores/ui';
+  import { showFullscreenPlayer, artModeActive, artExpandRequested } from '$lib/stores/ui';
+  import { autoDJActive } from '$lib/stores/autodj';
   import { goto } from '$app/navigation';
   import QueuePanel from './QueuePanel.svelte';
   import {
@@ -255,6 +256,11 @@ void main() {
 
   const hasArt = $derived(!!displayedCoverUrl);
 
+  // React to external requests to enter art mode (e.g. from Auto DJ toggle)
+  $effect(() => {
+    if ($artExpandRequested > 0 && hasArt) artExpanded = true;
+  });
+
   // Pan direction: horizontal if art is wider relative to viewport than viewport itself
   const panHorizontal = $derived(
     imgNaturalW > 0 && imgNaturalH > 0 &&
@@ -419,10 +425,15 @@ void main() {
     <div style="width: 0"></div>
     {/if}
     {#if artExpanded}
-      <!-- Collapse art button in art-mode -->
-      <button class="fs-collapse-art" onclick={collapseArt} title="Exit art view">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>
-      </button>
+      <div class="fs-header-right">
+        {#if $autoDJActive}
+          <div class="autodj-badge">AUTO DJ</div>
+        {/if}
+        <!-- Collapse art button in art-mode -->
+        <button class="fs-collapse-art" onclick={collapseArt} title="Exit art view">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>
+        </button>
+      </div>
     {:else}
       <div style="width: 36px"></div>
     {/if}
@@ -789,6 +800,23 @@ void main() {
 
   .fs-close:hover {
     color: var(--text-primary);
+  }
+
+  .fs-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .autodj-badge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: var(--accent);
+    color: #000;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
   }
 
   .fs-collapse-art {
