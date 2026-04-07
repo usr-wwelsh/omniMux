@@ -37,16 +37,18 @@ export interface PersonalityConfig {
   bpmMax: number | null;       // exclude songs above this BPM
   skipIntroSeconds: number;    // seek incoming track forward by this many seconds
   moodKeywords: string[];      // match against "Mood: X" Navidrome playlists
+  genreKeywords: string[];     // prefer songs whose genre contains one of these (substring match, case-insensitive)
   pitchSlop: number;           // ±N fraction random variance on beatmatch rate
   energyDropThreshold: number | null; // exit song early when energy stays below this (0-1), null=disabled
+  maxPlaySeconds: number | null; // force crossfade out after this many seconds, null=disabled
 }
 
 export const PERSONALITY_CONFIGS: Record<DJPersonality, PersonalityConfig> = {
-  none:     { label: 'None',     description: 'Standard Auto DJ',                bpmMin: null, bpmMax: null, skipIntroSeconds: 0,  moodKeywords: [],                                pitchSlop: 0.012, energyDropThreshold: null },
-  club:     { label: 'Club',     description: 'Dance/EDM — skip to the drop',    bpmMin: 115,  bpmMax: null, skipIntroSeconds: 45, moodKeywords: ['energetic', 'upbeat', 'dance'],   pitchSlop: 0.010, energyDropThreshold: 0.15 },
-  relaxing: { label: 'Relaxing', description: 'Ambient & calm — full songs',     bpmMin: null, bpmMax: 100,  skipIntroSeconds: 0,  moodKeywords: ['relaxing', 'ambient', 'calm'],    pitchSlop: 0.000, energyDropThreshold: null },
-  chill:    { label: 'Chill',    description: 'Lo-fi & mellow mid-tempo vibes',  bpmMin: 75,   bpmMax: 115,  skipIntroSeconds: 0,  moodKeywords: ['chill', 'mellow', 'lofi'],        pitchSlop: 0.015, energyDropThreshold: null },
-  workout:  { label: 'Workout',  description: 'High-energy — push through it',   bpmMin: 130,  bpmMax: null, skipIntroSeconds: 20, moodKeywords: ['energetic', 'intense', 'upbeat'], pitchSlop: 0.008, energyDropThreshold: null },
+  none:     { label: 'None',     description: 'Standard Auto DJ',                bpmMin: null, bpmMax: null, skipIntroSeconds: 0,  moodKeywords: [],                                genreKeywords: [],                                                                                    pitchSlop: 0.012, energyDropThreshold: null, maxPlaySeconds: null },
+  club:     { label: 'Club',     description: 'Dance/EDM — skip to the drop',    bpmMin: 120,  bpmMax: null, skipIntroSeconds: 45, moodKeywords: ['energetic', 'upbeat', 'dance'],   genreKeywords: ['dance', 'edm', 'electronic', 'house', 'techno', 'trance', 'electro', 'club'],   pitchSlop: 0.010, energyDropThreshold: 0.15, maxPlaySeconds: 150 },
+  relaxing: { label: 'Relaxing', description: 'Ambient & calm — full songs',     bpmMin: null, bpmMax: 100,  skipIntroSeconds: 0,  moodKeywords: ['relaxing', 'ambient', 'calm'],    genreKeywords: [],                                                                                    pitchSlop: 0.000, energyDropThreshold: null, maxPlaySeconds: null },
+  chill:    { label: 'Chill',    description: 'Lo-fi & mellow mid-tempo vibes',  bpmMin: 75,   bpmMax: 115,  skipIntroSeconds: 0,  moodKeywords: ['chill', 'mellow', 'lofi'],        genreKeywords: [],                                                                                    pitchSlop: 0.015, energyDropThreshold: null, maxPlaySeconds: null },
+  workout:  { label: 'Workout',  description: 'High-energy — push through it',   bpmMin: 130,  bpmMax: null, skipIntroSeconds: 20, moodKeywords: ['energetic', 'intense', 'upbeat'], genreKeywords: [],                                                                                    pitchSlop: 0.008, energyDropThreshold: null, maxPlaySeconds: 150 },
 };
 
 export const djPersonality = persistedWritable<DJPersonality>('omnimux-dj-personality', 'none', (v) => v as DJPersonality);
@@ -119,6 +121,18 @@ function crossfadeCheck(ct: number, dur: number) {
 
   const config = PERSONALITY_CONFIGS[get(djPersonality)];
   const nextTrack = q[idx + 1];
+
+  // Max-play-time early exit (Club/Workout personalities)
+  // Trigger crossfade once we've played maxPlaySeconds, but only if there's still
+  // more song left than the crossfade duration (so we don't double-fire near the end).
+  const maxPlay = config.maxPlaySeconds;
+  if (maxPlay !== null && ct >= maxPlay && remaining > cfSecs && !_crossfadeCheckActive) {
+    _crossfadeCheckActive = true;
+    const quickCf = Math.min(cfSecs, 4);
+    preloadCrossfadeTrack(nextTrack, config.skipIntroSeconds);
+    startCrossfade(idx + 1, quickCf, get(beatmatchEnabled), config.skipIntroSeconds, config.pitchSlop);
+    return;
+  }
 
   // Preload next track early so it's buffered when the crossfade window opens
   if (!_preloadTriggered && remaining <= cfSecs + PRELOAD_AHEAD) {
@@ -228,6 +242,16 @@ async function fillQueue() {
       const noBpm = pool.filter((s) => !s.bpm);
       filtered = inRange.length >= 5 ? inRange : [...inRange, ...noBpm];
       if (filtered.length === 0) filtered = pool;
+    }
+
+    // For personalities with genreKeywords, strongly prefer genre-matching tracks.
+    // Fall back to the full filtered pool only if fewer than 5 genre matches exist.
+    if (config.genreKeywords.length > 0) {
+      const lowerGenres = config.genreKeywords.map((g) => g.toLowerCase());
+      const genreMatches = filtered.filter((s) =>
+        s.genre && lowerGenres.some((kw) => s.genre!.toLowerCase().includes(kw))
+      );
+      if (genreMatches.length >= 5) filtered = genreMatches;
     }
 
     // Prefer songs close to the current BPM
