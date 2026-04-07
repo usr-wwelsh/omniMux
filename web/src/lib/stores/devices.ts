@@ -76,7 +76,7 @@ async function pollDevices() {
       const activeDev = others.find((d) => d.device_id === activeId);
       if (activeDev && activeDev.is_playing) {
         const elapsed = (Date.now() - receivedAt) / 1000; // negligible on LAN
-        const extrapolated = activeDev.current_time + elapsed;
+        const extrapolated = Math.min(activeDev.current_time + elapsed, activeDev.track?.duration ?? Infinity);
         currentTime.set(extrapolated);
       }
     }

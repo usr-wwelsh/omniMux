@@ -287,8 +287,8 @@ async function fillQueue() {
       const newTrack = await songToTrack(candidate);
       addToQueue(newTrack);
     }
-  } catch {
-    // Network failure — will retry on next queue check
+  } catch (e) {
+    console.warn('[omniMux] Auto DJ fillQueue failed:', e);
   } finally {
     _filling = false;
   }

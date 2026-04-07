@@ -50,6 +50,8 @@ export function registerCrossfadeChecker(fn: ((ct: number, dur: number) => void)
 }
 
 let _pushTimer: ReturnType<typeof setTimeout> | null = null;
+let _crossfadeSafetyTimer: ReturnType<typeof setTimeout> | null = null;
+let _artworkFetchToken = 0; // incremented on each track change to cancel stale artwork fetches
 // Tracks the seek_issued_at of the last remote seek we applied, to avoid re-applying
 let _lastAppliedSeekIssuedAt = 0;
 
@@ -64,7 +66,9 @@ function schedulePushQueue(activeId: string) {
     const index = get(queueIndex);
     try {
       await api.setQueue(tracks, index, activeId);
-    } catch {}
+    } catch (e) {
+      console.warn('[omniMux] Failed to push queue to server:', e);
+    }
   }, 150);
 }
 
@@ -266,11 +270,12 @@ export function playTrack(track: Track) {
     a.volume = get(volume);
     a.play();
   }
-  // Fetch HQ art in the background — doesn't block playback
+  // Fetch HQ art in the background — doesn't block playback.
+  // Token prevents a slow response from an earlier track clobbering the current one.
   if (!track.hqCoverUrl) {
+    const token = ++_artworkFetchToken;
     fetchItunesArtwork(track.artist, track.album).then((url) => {
-      if (!url) return;
-      // Only apply if this track is still current
+      if (!url || token !== _artworkFetchToken) return;
       if (get(currentTrack)?.id === track.id) {
         currentTrack.update((t) => t ? { ...t, hqCoverUrl: url } : t);
       }
@@ -523,6 +528,16 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
   if (!nextTrack?.streamUrl) return;
 
   _isCrossfading = true;
+  // Safety valve: if the crossfade doesn't complete within 30s, release the lock
+  // so the player doesn't get stuck (e.g. canplay never fires on a failed load).
+  if (_crossfadeSafetyTimer) clearTimeout(_crossfadeSafetyTimer);
+  _crossfadeSafetyTimer = setTimeout(() => {
+    if (_isCrossfading) {
+      console.warn('[omniMux] Crossfade safety timeout — resetting _isCrossfading');
+      _isCrossfading = false;
+    }
+    _crossfadeSafetyTimer = null;
+  }, 30_000);
 
   if (!crossfadeAudio && typeof window !== 'undefined') {
     crossfadeAudio = new Audio();
@@ -610,8 +625,9 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
         schedulePushQueue(myId || get(activeDeviceId) || '');
 
         if (!nextTrack.hqCoverUrl) {
+          const token = ++_artworkFetchToken;
           fetchItunesArtwork(nextTrack.artist, nextTrack.album).then((url) => {
-            if (!url) return;
+            if (!url || token !== _artworkFetchToken) return;
             if (get(currentTrack)?.id === nextTrack.id) {
               currentTrack.update((t) => t ? { ...t, hqCoverUrl: url } : t);
             }
@@ -640,6 +656,7 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
 }
 
 export function stopCrossfade() {
+  if (_crossfadeSafetyTimer) { clearTimeout(_crossfadeSafetyTimer); _crossfadeSafetyTimer = null; }
   if (_crossfadeRafId !== null) {
     cancelAnimationFrame(_crossfadeRafId);
     _crossfadeRafId = null;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { queue, queueIndex, jumpToQueue, removeFromQueue, reorderQueue, formatTime } from '$lib/stores/player';
 
   // Mouse drag state
@@ -78,6 +79,12 @@
     touchDragOver = -1;
     touchActive = false;
   }
+
+  // Clean up any in-progress touch drag if the component unmounts mid-gesture
+  onDestroy(() => {
+    document.removeEventListener('touchmove', onTouchMove);
+    document.removeEventListener('touchend', onTouchEnd);
+  });
 </script>
 
 <div class="queue-panel">
