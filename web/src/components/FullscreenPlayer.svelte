@@ -7,7 +7,7 @@
   } from '$lib/stores/player';
   import { otherDevices } from '$lib/stores/devices';
   import { showFullscreenPlayer, artModeActive, artExpandRequested } from '$lib/stores/ui';
-  import { autoDJActive } from '$lib/stores/autodj';
+  import { autoDJActive, advanceVis, visCyclingPaused } from '$lib/stores/autodj';
   import { goto } from '$app/navigation';
   import QueuePanel from './QueuePanel.svelte';
   import {
@@ -723,6 +723,21 @@ void main() {
               onclick={(e) => { e.stopPropagation(); visMode.set(m); }}
             >{m.charAt(0).toUpperCase() + m.slice(1)}</button>
           {/each}
+          <!-- Cycling toggle — pauses/resumes auto-vis-cycling, disabled when vis is off -->
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <button
+            class="vis-mode-btn vis-cycle-toggle"
+            class:cycling-on={!$visCyclingPaused && $visMode !== 'off'}
+            disabled={$visMode === 'off'}
+            onclick={(e) => { e.stopPropagation(); visCyclingPaused.update((v) => !v); }}
+            title={$visCyclingPaused ? 'Resume vis cycling' : 'Pause vis cycling'}
+          >
+            <span class="vis-cycle-pill">
+              <span class="vis-cycle-knob"></span>
+            </span>
+            Cycle
+          </button>
         </div>
       {/if}
 
@@ -923,6 +938,46 @@ void main() {
     color: #fff;
     background: rgba(255, 255, 255, 0.25);
     border-color: rgba(255, 255, 255, 0.4);
+  }
+
+  .vis-cycle-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .vis-cycle-toggle:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  .vis-cycle-pill {
+    width: 26px;
+    height: 14px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    padding: 2px;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+
+  .vis-cycle-knob {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.6);
+    transition: transform 0.2s, background 0.2s;
+  }
+
+  .vis-cycle-toggle.cycling-on .vis-cycle-pill {
+    background: var(--accent, rgba(255,255,255,0.5));
+  }
+
+  .vis-cycle-toggle.cycling-on .vis-cycle-knob {
+    transform: translateX(12px);
+    background: #fff;
   }
 
   /* Raise header and body above the art background */

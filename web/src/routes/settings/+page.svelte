@@ -3,6 +3,7 @@
   import {
     crossfadeDuration, beatmatchEnabled, bpmTolerance,
     visCycleInterval, ambientIdleMinutes,
+    djPersonality, PERSONALITY_CONFIGS, type DJPersonality,
   } from '$lib/stores/autodj';
 
   const themes: { value: Theme; label: string; description: string }[] = [
@@ -20,6 +21,8 @@
     { value: '30', label: '30s' },
     { value: '60', label: '60s' },
   ];
+
+  const personalities = Object.entries(PERSONALITY_CONFIGS) as [DJPersonality, typeof PERSONALITY_CONFIGS[DJPersonality]][];
 </script>
 
 <div class="settings">
@@ -51,6 +54,25 @@
 
   <section class="settings-section">
     <h2 class="section-title">Auto DJ</h2>
+
+    <div class="setting-row">
+      <div class="setting-info">
+        <span class="setting-name">DJ Personality</span>
+        <span class="setting-desc">Controls song selection, pacing, and mix style when Auto DJ is active</span>
+      </div>
+      <div class="personality-options">
+        {#each personalities as [key, config]}
+          <button
+            class="personality-btn"
+            class:active={$djPersonality === key}
+            onclick={() => djPersonality.set(key)}
+          >
+            <span class="personality-name">{config.label}</span>
+            <span class="personality-desc">{config.description}</span>
+          </button>
+        {/each}
+      </div>
+    </div>
 
     <div class="setting-row">
       <div class="setting-info">
@@ -385,5 +407,47 @@
 
   .github-link:hover {
     border-color: var(--accent);
+  }
+
+  .personality-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .personality-btn {
+    flex: 1 1 140px;
+    max-width: 180px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 2px solid transparent;
+    background: var(--bg-elevated);
+    text-align: left;
+    transition: border-color 0.15s, background 0.15s;
+    cursor: pointer;
+  }
+
+  .personality-btn:hover {
+    border-color: var(--text-subdued);
+  }
+
+  .personality-btn.active {
+    border-color: var(--accent);
+  }
+
+  .personality-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .personality-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.3;
   }
 </style>

@@ -495,7 +495,8 @@ export function formatTime(seconds: number): string {
 
 // Preload the next track onto crossfadeAudio silently so it's buffered
 // before the crossfade window begins. Call this ~10s before the fade.
-export function preloadCrossfadeTrack(track: Track) {
+// seekOffset: start playing from this many seconds into the track (for personality skip-intro).
+export function preloadCrossfadeTrack(track: Track, seekOffset = 0) {
   if (!track.streamUrl || typeof window === 'undefined') return;
   if (!crossfadeAudio) crossfadeAudio = new Audio();
   const cf = crossfadeAudio;
@@ -503,10 +504,16 @@ export function preloadCrossfadeTrack(track: Track) {
   cf.src = track.streamUrl;
   cf.volume = 0;
   cf.playbackRate = 1.0;
-  cf.play().catch(() => {});
+  cf.play()
+    .then(() => {
+      if (seekOffset > 0) cf.currentTime = seekOffset;
+    })
+    .catch(() => {});
 }
 
-export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatch: boolean) {
+// seekOffset: start the incoming track from this many seconds in (personality skip-intro).
+// pitchSlop: add ±pitchSlop random variance to beatmatch playback rate for a live DJ feel.
+export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatch: boolean, seekOffset = 0, pitchSlop = 0.012) {
   if (_isCrossfading) return;
   const q = get(queue);
   const nextTrack = q[nextIdx];
@@ -521,15 +528,24 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
 
   const cf = crossfadeAudio;
 
-  // Hard pitch snap to match BPM
+  // Pitch-match BPM with a small random slop for a live DJ feel
   const currentBpm = get(currentTrack)?.bpm;
   const nextBpm = nextTrack.bpm;
-  const startPlaybackRate = (doBeatmatch && currentBpm && nextBpm && nextBpm > 0)
+  let startPlaybackRate = (doBeatmatch && currentBpm && nextBpm && nextBpm > 0)
     ? currentBpm / nextBpm
     : 1.0;
+  if (doBeatmatch && pitchSlop > 0) {
+    // ±pitchSlop random variance — real DJs are never perfectly on beat
+    startPlaybackRate *= 1 + (Math.random() - 0.5) * pitchSlop * 2;
+  }
   cf.playbackRate = startPlaybackRate;
 
   function beginFade() {
+    // Seek cf to skip-intro offset if not already there
+    if (seekOffset > 0 && cf.currentTime < seekOffset - 1) {
+      cf.currentTime = seekOffset;
+    }
+
     const startTime = performance.now();
     const totalMs = durationSecs * 1000;
     const primary = getAudio();
@@ -546,27 +562,38 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
       if (t < 1) {
         _crossfadeRafId = requestAnimationFrame(fade);
       } else {
-        // Transfer playback back to primary (keeps Web Audio analyser chain intact)
-        const transferTime = cf.currentTime;
-        primary.src = nextTrack.streamUrl!;
+        // Transfer playback back to primary (keeps Web Audio analyser chain intact).
+        // We load primary with the same URL now so it buffers during the fade. Seek to
+        // cf's live position right before switching so there's no gap or time-jump.
+        const nextUrl = nextTrack.streamUrl!;
         primary.volume = 0;
-        // Wait for primary to buffer before surfacing it
-        function onReady() {
-          primary.currentTime = transferTime;
+
+        function finishTransfer() {
+          // Sync to wherever cf is right now, then hand off
+          const syncTime = cf.currentTime;
+          primary.currentTime = syncTime;
           primary.playbackRate = 1.0;
           primary.volume = get(volume);
-          primary.play();
-          cf.pause();
-          cf.src = '';
-          cf.volume = 0;
-          cf.playbackRate = 1.0;
-          _isCrossfading = false;
-          _crossfadeRafId = null;
+          primary.play()
+            .then(() => {
+              cf.pause();
+              cf.src = '';
+              cf.volume = 0;
+              cf.playbackRate = 1.0;
+              _isCrossfading = false;
+              _crossfadeRafId = null;
+            })
+            .catch(() => { _isCrossfading = false; });
         }
+
+        if (primary.src !== nextUrl) {
+          primary.src = nextUrl;
+        }
+
         if (primary.readyState >= 3) {
-          onReady();
+          finishTransfer();
         } else {
-          primary.addEventListener('canplay', onReady, { once: true });
+          primary.addEventListener('canplay', finishTransfer, { once: true });
           primary.play().catch(() => {});
         }
 
@@ -601,6 +628,9 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
     if (cf.src !== nextTrack.streamUrl) {
       cf.src = nextTrack.streamUrl;
       cf.volume = 0;
+      if (seekOffset > 0) {
+        cf.addEventListener('canplay', () => { cf.currentTime = seekOffset; }, { once: true });
+      }
     }
     cf.play().then(beginFade).catch(() => { _isCrossfading = false; });
   }
