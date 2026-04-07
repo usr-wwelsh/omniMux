@@ -110,9 +110,12 @@ export function applyServerQueueState(
         return;
       }
     }
-    // Apply remote index change (another device skipped / played a new queue)
+    // Apply remote index change (another device skipped / played a new queue).
+    // Skip during a crossfade — the local index is already ahead of the server
+    // because schedulePushQueue is debounced; applying stale server state here
+    // would revert the crossfade and replay the previous track.
     const localIdx = get(queueIndex);
-    if (index !== localIdx && index >= 0 && index < tracks.length) {
+    if (!_isCrossfading && index !== localIdx && index >= 0 && index < tracks.length) {
       queueIndex.set(index);
       playTrack(tracks[index]);
     }

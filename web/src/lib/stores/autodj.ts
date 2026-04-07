@@ -41,14 +41,15 @@ export interface PersonalityConfig {
   pitchSlop: number;           // ±N fraction random variance on beatmatch rate
   energyDropThreshold: number | null; // exit song early when energy stays below this (0-1), null=disabled
   maxPlaySeconds: number | null; // force crossfade out after this many seconds, null=disabled
+  prioritizeHighBpm: boolean;   // pick from top-BPM portion of the pool instead of random
 }
 
 export const PERSONALITY_CONFIGS: Record<DJPersonality, PersonalityConfig> = {
-  none:     { label: 'None',     description: 'Standard Auto DJ',                bpmMin: null, bpmMax: null, skipIntroSeconds: 0,  moodKeywords: [],                                genreKeywords: [],                                                                                    pitchSlop: 0.012, energyDropThreshold: null, maxPlaySeconds: null },
-  club:     { label: 'Club',     description: 'Dance/EDM — skip to the drop',    bpmMin: 120,  bpmMax: null, skipIntroSeconds: 45, moodKeywords: ['energetic', 'upbeat', 'dance'],   genreKeywords: ['dance', 'edm', 'electronic', 'house', 'techno', 'trance', 'electro', 'club'],   pitchSlop: 0.010, energyDropThreshold: 0.15, maxPlaySeconds: 150 },
-  relaxing: { label: 'Relaxing', description: 'Ambient & calm — full songs',     bpmMin: null, bpmMax: 100,  skipIntroSeconds: 0,  moodKeywords: ['relaxing', 'ambient', 'calm'],    genreKeywords: [],                                                                                    pitchSlop: 0.000, energyDropThreshold: null, maxPlaySeconds: null },
-  chill:    { label: 'Chill',    description: 'Lo-fi & mellow mid-tempo vibes',  bpmMin: 75,   bpmMax: 115,  skipIntroSeconds: 0,  moodKeywords: ['chill', 'mellow', 'lofi'],        genreKeywords: [],                                                                                    pitchSlop: 0.015, energyDropThreshold: null, maxPlaySeconds: null },
-  workout:  { label: 'Workout',  description: 'High-energy — push through it',   bpmMin: 130,  bpmMax: null, skipIntroSeconds: 20, moodKeywords: ['energetic', 'intense', 'upbeat'], genreKeywords: [],                                                                                    pitchSlop: 0.008, energyDropThreshold: null, maxPlaySeconds: 150 },
+  none:     { label: 'None',     description: 'Standard Auto DJ',                bpmMin: null, bpmMax: null, skipIntroSeconds: 0,  moodKeywords: [],                                genreKeywords: [],                                                                                    pitchSlop: 0.012, energyDropThreshold: null, maxPlaySeconds: null, prioritizeHighBpm: false },
+  club:     { label: 'Club',     description: 'Dance/EDM — skip to the drop',    bpmMin: 120,  bpmMax: null, skipIntroSeconds: 45, moodKeywords: ['energetic', 'upbeat', 'dance'],   genreKeywords: ['dance', 'edm', 'electronic', 'house', 'techno', 'trance', 'electro', 'club'],   pitchSlop: 0.010, energyDropThreshold: 0.15, maxPlaySeconds: 150,  prioritizeHighBpm: false },
+  relaxing: { label: 'Relaxing', description: 'Ambient & calm — full songs',     bpmMin: null, bpmMax: 100,  skipIntroSeconds: 0,  moodKeywords: ['relaxing', 'ambient', 'calm'],    genreKeywords: [],                                                                                    pitchSlop: 0.000, energyDropThreshold: null, maxPlaySeconds: null, prioritizeHighBpm: false },
+  chill:    { label: 'Chill',    description: 'Lo-fi & mellow mid-tempo vibes',  bpmMin: 75,   bpmMax: 115,  skipIntroSeconds: 0,  moodKeywords: ['chill', 'mellow', 'lofi'],        genreKeywords: [],                                                                                    pitchSlop: 0.015, energyDropThreshold: null, maxPlaySeconds: null, prioritizeHighBpm: false },
+  workout:  { label: 'Workout',  description: 'High-energy — push through it',   bpmMin: 130,  bpmMax: null, skipIntroSeconds: 20, moodKeywords: ['energetic', 'intense', 'upbeat'], genreKeywords: [],                                                                                    pitchSlop: 0.008, energyDropThreshold: null, maxPlaySeconds: 60,   prioritizeHighBpm: true  },
 };
 
 export const djPersonality = persistedWritable<DJPersonality>('omnimux-dj-personality', 'none', (v) => v as DJPersonality);
@@ -252,6 +253,15 @@ async function fillQueue() {
         s.genre && lowerGenres.some((kw) => s.genre!.toLowerCase().includes(kw))
       );
       if (genreMatches.length >= 5) filtered = genreMatches;
+    }
+
+    // For high-BPM priority modes, sort by BPM desc and pick from the top quarter
+    if (config.prioritizeHighBpm) {
+      const withBpm = filtered.filter((s) => s.bpm).sort((a, b) => (b.bpm ?? 0) - (a.bpm ?? 0));
+      if (withBpm.length > 0) {
+        const topN = Math.max(1, Math.ceil(withBpm.length * 0.25));
+        filtered = withBpm.slice(0, topN);
+      }
     }
 
     // Prefer songs close to the current BPM
