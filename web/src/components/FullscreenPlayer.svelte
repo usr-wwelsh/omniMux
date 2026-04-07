@@ -6,7 +6,7 @@
     queue, activeDeviceId, localDeviceId, claimPlayback,
   } from '$lib/stores/player';
   import { otherDevices } from '$lib/stores/devices';
-  import { showFullscreenPlayer, artModeActive, artExpandRequested } from '$lib/stores/ui';
+  import { showFullscreenPlayer, artModeActive, artExpandRequested, autoDJToast } from '$lib/stores/ui';
   import { autoDJActive, advanceVis, visCyclingPaused } from '$lib/stores/autodj';
   import { goto } from '$app/navigation';
   import QueuePanel from './QueuePanel.svelte';
@@ -824,6 +824,10 @@ void main() {
 
   </div>
   {/if}
+
+  {#if $autoDJToast}
+    <div class="autodj-toast">{$autoDJToast}</div>
+  {/if}
 </div>
 
 <style>
@@ -1436,5 +1440,20 @@ void main() {
     .art-mode .fs-player-panel {
       padding: 0 24px 40px !important;
     }
+  }
+
+  .autodj-toast {
+    position: absolute;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(220, 60, 60, 0.92);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    z-index: 10;
+    pointer-events: none;
+    white-space: nowrap;
   }
 </style>

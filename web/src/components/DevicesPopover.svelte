@@ -29,16 +29,21 @@
   {:else}
     <ul class="device-list">
       {#each $otherDevices as device}
-        <li class="device-item">
+        <li class="device-item" class:reconnecting={device.is_reconnecting}>
           <div class="device-info">
-            <div class="device-name">{device.device_name}</div>
+            <div class="device-name">
+              {device.device_name}
+              {#if device.is_reconnecting}
+                <span class="reconnecting-badge">Reconnecting…</span>
+              {/if}
+            </div>
             {#if device.track}
               <div class="device-track">{device.track.title} — {device.track.artist}</div>
             {:else}
               <div class="device-track idle">Idle</div>
             {/if}
           </div>
-          {#if device.track}
+          {#if device.track && !device.is_reconnecting}
             <button class="listen-btn" onclick={() => { listenHere(device); onclose(); }}>
               Listen here
             </button>
@@ -199,5 +204,16 @@
 
   .listen-btn:hover {
     background: color-mix(in srgb, var(--accent) 15%, transparent);
+  }
+
+  .device-item.reconnecting {
+    opacity: 0.6;
+  }
+
+  .reconnecting-badge {
+    font-size: 10px;
+    color: var(--text-subdued);
+    font-style: italic;
+    margin-left: 4px;
   }
 </style>

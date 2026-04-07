@@ -54,22 +54,40 @@ let _crossfadeSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 let _artworkFetchToken = 0; // incremented on each track change to cancel stale artwork fetches
 // Tracks the seek_issued_at of the last remote seek we applied, to avoid re-applying
 let _lastAppliedSeekIssuedAt = 0;
+// Suppress server index changes for this window after a crossfade completes
+let _crossfadeBlackoutUntil = 0;
+const CROSSFADE_BLACKOUT_MS = 2000;
+// Last confirmed server queue version — used for optimistic locking
+let _knownQueueVersion = 0;
+
+// Shared push logic — handles 409 version conflict with one refetch-and-retry
+async function _doPushQueue(activeId: string, retryOnConflict = true): Promise<void> {
+  const myId = get(localDeviceId);
+  if (!myId || get(soloMode)) return;
+  const tracks = get(queue);
+  const index = get(queueIndex);
+  try {
+    const result = await api.setQueue(tracks, index, activeId, undefined, undefined, _knownQueueVersion);
+    if (result.conflict && result.serverVersion !== undefined) {
+      _knownQueueVersion = result.serverVersion;
+      if (retryOnConflict) {
+        await _doPushQueue(activeId, false); // one retry, no further recursion
+      }
+      return;
+    }
+    if (result.queue_version !== undefined) {
+      _knownQueueVersion = result.queue_version;
+    }
+  } catch (e) {
+    console.warn('[omniMux] Failed to push queue to server:', e);
+  }
+}
 
 // activeId: the device that should own playback after this push.
 // Pass localDeviceId to claim ownership, or pass the current activeDeviceId to preserve it.
 function schedulePushQueue(activeId: string) {
   if (_pushTimer) clearTimeout(_pushTimer);
-  _pushTimer = setTimeout(async () => {
-    const myId = get(localDeviceId);
-    if (!myId || get(soloMode)) return;
-    const tracks = get(queue);
-    const index = get(queueIndex);
-    try {
-      await api.setQueue(tracks, index, activeId);
-    } catch (e) {
-      console.warn('[omniMux] Failed to push queue to server:', e);
-    }
-  }, 150);
+  _pushTimer = setTimeout(() => _doPushQueue(activeId), 150);
 }
 
 // Returns the current active device ID, falling back to this device if none set.
@@ -91,8 +109,11 @@ export function applyServerQueueState(
   serverActiveDevice: string | null,
   seekTo: number | null = null,
   seekIssuedAt: number | null = null,
+  queueVersion: number = 0,
 ) {
   if (get(soloMode)) return;
+  // Track the latest confirmed server version for optimistic locking
+  if (queueVersion > 0) _knownQueueVersion = queueVersion;
   const myId = get(localDeviceId);
   activeDeviceId.set(serverActiveDevice);
 
@@ -115,11 +136,12 @@ export function applyServerQueueState(
       }
     }
     // Apply remote index change (another device skipped / played a new queue).
-    // Skip during a crossfade — the local index is already ahead of the server
-    // because schedulePushQueue is debounced; applying stale server state here
-    // would revert the crossfade and replay the previous track.
+    // Skip during a crossfade or within the blackout window after one — the local index
+    // is already ahead of the server because the push is debounced; applying stale server
+    // state here would revert the crossfade and replay the previous track.
     const localIdx = get(queueIndex);
-    if (!_isCrossfading && index !== localIdx && index >= 0 && index < tracks.length) {
+    const now = Date.now();
+    if (!_isCrossfading && now > _crossfadeBlackoutUntil && index !== localIdx && index >= 0 && index < tracks.length) {
       queueIndex.set(index);
       playTrack(tracks[index]);
     }
@@ -342,7 +364,7 @@ export function seekOnActiveDevice(time: number) {
   if (!activeId) return;
   const tracks = get(queue);
   const index = get(queueIndex);
-  const issuedAt = Date.now() / 1000;
+  const issuedAt = Date.now(); // millisecond precision to prevent ordering issues within the same second
   // Optimistically update local display
   currentTime.set(time);
   try {
@@ -528,6 +550,14 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
   if (!nextTrack?.streamUrl) return;
 
   _isCrossfading = true;
+  // Issue 1: push queue immediately (no debounce) so server index is correct before
+  // the first poll fires, preventing other devices from reverting the crossfade.
+  {
+    const myIdNow = get(localDeviceId);
+    if (myIdNow && !get(soloMode)) {
+      _doPushQueue(myIdNow).catch((e) => console.warn('[omniMux] Failed crossfade-start push:', e));
+    }
+  }
   // Safety valve: if the crossfade doesn't complete within 30s, release the lock
   // so the player doesn't get stuck (e.g. canplay never fires on a failed load).
   if (_crossfadeSafetyTimer) clearTimeout(_crossfadeSafetyTimer);
@@ -535,6 +565,42 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
     if (_isCrossfading) {
       console.warn('[omniMux] Crossfade safety timeout — resetting _isCrossfading');
       _isCrossfading = false;
+      _crossfadeBlackoutUntil = Date.now() + CROSSFADE_BLACKOUT_MS;
+
+      // Issue 3: attempt audio recovery instead of leaving it dead
+      const primary = audio;
+      const cf = crossfadeAudio;
+      if (primary && primary.src) {
+        primary.volume = get(volume);
+        primary.play().catch(() => {
+          // Primary failed — try to take over from crossfade audio if it's still playing
+          if (cf && !cf.paused && cf.src) {
+            primary.src = cf.src;
+            primary.currentTime = cf.currentTime;
+            primary.volume = get(volume);
+            primary.play().catch(() => {
+              console.error('[omniMux] Crossfade recovery failed — audio is dead');
+            });
+          }
+        });
+      } else if (cf && !cf.paused && cf.src) {
+        if (primary) {
+          primary.src = cf.src;
+          primary.currentTime = cf.currentTime;
+          primary.volume = get(volume);
+          primary.play().catch(() => {});
+        }
+      }
+      // Clean up crossfade audio regardless
+      if (cf) {
+        cf.pause();
+        cf.src = '';
+        cf.volume = 0;
+      }
+      if (_crossfadeRafId !== null) {
+        cancelAnimationFrame(_crossfadeRafId);
+        _crossfadeRafId = null;
+      }
     }
     _crossfadeSafetyTimer = null;
   }, 30_000);
@@ -600,8 +666,18 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
               cf.playbackRate = 1.0;
               _isCrossfading = false;
               _crossfadeRafId = null;
+              // Issue 10: set blackout window and push immediately so server has the
+              // correct index before the next poll, preventing other devices from reverting.
+              _crossfadeBlackoutUntil = Date.now() + CROSSFADE_BLACKOUT_MS;
+              const myIdFinish = get(localDeviceId);
+              if (myIdFinish && !get(soloMode)) {
+                _doPushQueue(myIdFinish).catch((e) => console.warn('[omniMux] Failed crossfade-end push:', e));
+              }
             })
-            .catch(() => { _isCrossfading = false; });
+            .catch(() => {
+              _isCrossfading = false;
+              _crossfadeBlackoutUntil = Date.now() + CROSSFADE_BLACKOUT_MS;
+            });
         }
 
         if (primary.src !== nextUrl) {
@@ -618,11 +694,10 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
         queueIndex.set(nextIdx);
         currentTrack.set(nextTrack);
         updateMediaSession(nextTrack);
-        // Claim ownership and push new index to server so device polling
-        // doesn't revert back to the old track index
+        // Claim ownership — the actual server push happens in finishTransfer once
+        // primary.play() succeeds, so we don't push a stale index before transfer.
         const myId = get(localDeviceId);
         if (myId) activeDeviceId.set(myId);
-        schedulePushQueue(myId || get(activeDeviceId) || '');
 
         if (!nextTrack.hqCoverUrl) {
           const token = ++_artworkFetchToken;

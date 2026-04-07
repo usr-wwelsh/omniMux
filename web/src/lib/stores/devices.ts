@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import { api, type DeviceSession } from '$lib/api';
 import { currentTrack, isPlaying, currentTime, playTrack, seek, localDeviceId, activeDeviceId, applyServerQueueState, type Track } from './player';
 import { artModeActive } from './ui';
+import { autoDJActive } from './autodj';
 import { streamUrl } from '$lib/subsonic';
 
 export { type DeviceSession };
@@ -43,6 +44,7 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let queuePollTimer: ReturnType<typeof setInterval> | null = null;
 let artModeUnsubscribe: (() => void) | null = null;
+let autoDJUnsubscribe: (() => void) | null = null;
 let myDeviceId = '';
 
 async function sendHeartbeat() {
@@ -93,6 +95,7 @@ async function pollQueue() {
       state.active_device_id,
       state.seek_to,
       state.seek_issued_at,
+      state.queue_version ?? 0,
     );
   } catch {}
 }
@@ -101,7 +104,10 @@ function restartTimers(slow: boolean) {
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   if (pollTimer) clearInterval(pollTimer);
   if (queuePollTimer) clearInterval(queuePollTimer);
-  const ms = slow ? 5_000 : 1_000;
+  // Issue 6: keep polling at 1s when Auto DJ is active — crossfades complete in ~5s,
+  // so 5s polling would cause other devices to miss them entirely in art mode.
+  const effectivelySlow = slow && !get(autoDJActive);
+  const ms = effectivelySlow ? 5_000 : 1_000;
   heartbeatTimer = setInterval(sendHeartbeat, ms);
   pollTimer = setInterval(pollDevices, ms);
   queuePollTimer = setInterval(pollQueue, ms);
@@ -115,6 +121,8 @@ export function startDeviceSync() {
   pollQueue();
   restartTimers(false);
   artModeUnsubscribe = artModeActive.subscribe((active) => restartTimers(active));
+  // Issue 6: also restart timers when Auto DJ toggles so art-mode slowdown is overridden
+  autoDJUnsubscribe = autoDJActive.subscribe(() => restartTimers(get(artModeActive)));
 }
 
 export function stopDeviceSync() {
@@ -122,6 +130,7 @@ export function stopDeviceSync() {
   if (pollTimer) clearInterval(pollTimer);
   if (queuePollTimer) clearInterval(queuePollTimer);
   artModeUnsubscribe?.();
+  autoDJUnsubscribe?.();
 }
 
 export async function listenHere(session: DeviceSession) {

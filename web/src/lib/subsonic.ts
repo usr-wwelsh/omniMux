@@ -46,18 +46,39 @@ async function subsonicParams(): Promise<URLSearchParams> {
   return params;
 }
 
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  delaysMs = [500, 1000, 2000],
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastError = e;
+      if (attempt < retries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt]));
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function subsonicGet(endpoint: string, extra: Record<string, string> = {}): Promise<any> {
-  const params = await subsonicParams();
-  for (const [k, v] of Object.entries(extra)) {
-    params.set(k, v);
-  }
-  const res = await fetch(`${NAVIDROME_URL}/rest/${endpoint}?${params.toString()}`);
-  const data = await res.json();
-  const sr = data['subsonic-response'];
-  if (sr?.status !== 'ok') {
-    throw new Error(sr?.error?.message || 'Subsonic API error');
-  }
-  return sr;
+  return withRetry(async () => {
+    const params = await subsonicParams();
+    for (const [k, v] of Object.entries(extra)) {
+      params.set(k, v);
+    }
+    const res = await fetch(`${NAVIDROME_URL}/rest/${endpoint}?${params.toString()}`);
+    const data = await res.json();
+    const sr = data['subsonic-response'];
+    if (sr?.status !== 'ok') {
+      throw new Error(sr?.error?.message || 'Subsonic API error');
+    }
+    return sr;
+  });
 }
 
 export async function streamUrl(id: string): Promise<string> {

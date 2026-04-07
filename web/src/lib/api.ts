@@ -85,6 +85,7 @@ export interface DeviceSession {
   is_playing: boolean;
   current_time: number;
   updated_at: string;
+  is_reconnecting: boolean;
   // Set client-side when the poll response was received, for position extrapolation
   received_at_ms?: number;
 }
@@ -116,6 +117,7 @@ export interface QueueState {
   active_device_id: string | null;
   seek_to: number | null;
   seek_issued_at: number | null;
+  queue_version: number;
 }
 
 export interface TaggerTrack {
@@ -193,10 +195,45 @@ export const api = {
     return request('/api/queue');
   },
 
-  async setQueue(tracks: QueueTrack[], index: number, active_device_id: string, seek_to?: number, seek_issued_at?: number): Promise<void> {
-    return request('/api/queue', {
+  async setQueue(
+    tracks: QueueTrack[],
+    index: number,
+    active_device_id: string,
+    seek_to?: number,
+    seek_issued_at?: number,
+    queue_version?: number,
+  ): Promise<{ ok: boolean; queue_version?: number; conflict?: boolean; serverVersion?: number }> {
+    const { token } = get(auth);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    };
+    const res = await fetch('/api/queue', {
       method: 'PUT',
-      body: JSON.stringify({ tracks, index, active_device_id, seek_to: seek_to ?? null, seek_issued_at: seek_issued_at ?? null }),
+      headers,
+      body: JSON.stringify({
+        tracks, index, active_device_id,
+        seek_to: seek_to ?? null,
+        seek_issued_at: seek_issued_at ?? null,
+        queue_version: queue_version ?? null,
+      }),
+    });
+    if (res.status === 409) {
+      const body = await res.json().catch(() => ({}));
+      return { ok: false, conflict: true, serverVersion: body.detail?.queue_version };
+    }
+    if (res.status === 401) { logout(); throw new Error('Unauthorized'); }
+    if (!res.ok) { const body = await res.json().catch(() => ({})); throw new Error(body.detail || `HTTP ${res.status}`); }
+    const data = await res.json();
+    return { ok: true, queue_version: data.queue_version };
+  },
+
+  async enrichSongs(
+    songs: Array<{ title: string; artist: string }>,
+  ): Promise<Array<{ title: string; artist: string; mood?: string; energy?: number; key?: string; bpm?: number }>> {
+    return request('/api/songs/enrich', {
+      method: 'POST',
+      body: JSON.stringify({ songs }),
     });
   },
 
