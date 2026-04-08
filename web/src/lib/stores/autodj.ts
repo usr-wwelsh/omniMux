@@ -3,9 +3,9 @@ import { browser } from '$app/environment';
 import { subsonic, type Song, type Playlist } from '../subsonic';
 import { api } from '../api';
 import {
-  queue, queueIndex, currentTrack, loop,
-  songToTrack, addToQueue,
-  startCrossfade, stopCrossfade, registerCrossfadeChecker, preloadCrossfadeTrack,
+  queue, queueIndex, currentTrack, loop, isPlaying,
+  songToTrack, addToQueue, jumpToQueue, getAudio,
+  startCrossfade, stopCrossfade, registerCrossfadeChecker, preloadCrossfadeTrack, warmUpCrossfadeAudio,
 } from './player';
 import { visMode, type VisMode, startAutoGain, stopAutoGain, getAnalyser, fillFrequencyData, overallFromBuf } from './visualizer';
 import { showFullscreenPlayer, artExpandRequested, autoDJToast } from './ui';
@@ -220,12 +220,16 @@ function _sampleEnergy(ct: number): void {
   const avgEnergy = _energyHistory.reduce((a, b) => a + b, 0) / _energyHistory.length;
   if (avgEnergy < threshold && !_energyDropFired && !_crossfadeCheckActive) {
     _energyDropFired = true;
-    _crossfadeCheckActive = true;
     const q = get(queue);
     const idx = get(queueIndex);
     if (idx < q.length - 1) {
+      // Only lock out the normal crossfade check when we're actually starting a fade
+      _crossfadeCheckActive = true;
       const cfSecs = Math.min(get(crossfadeDuration), 4); // quick exit on energy drop
       startCrossfade(idx + 1, cfSecs, get(beatmatchEnabled), config.skipIntroSeconds, config.pitchSlop);
+    } else {
+      // No next track yet — kick off a fill so the end-of-track crossfade can fire normally
+      fillQueue();
     }
   }
 }
@@ -281,7 +285,7 @@ let _queueMonitorUnsub: (() => void) | null = null;
 let _filling = false;
 
 // Ring buffer of recently-played song IDs — never re-queue these
-const RECENT_HISTORY = 15;
+const RECENT_HISTORY = 30;
 const _recentIds: string[] = [];
 
 // Mood playlist cache: { playlists, fetchedAt }
@@ -513,11 +517,14 @@ async function fillQueue() {
       candidate = scored[Math.floor(Math.random() * Math.min(5, scored.length))];
     }
 
-    // Last resort: drop exclusions entirely (tiny library edge case), but still respect ignore flag
+    // Last resort: personality/BPM filters wiped the pool (small library edge case).
+    // Still prefer non-recent songs; only pick a recently-played one if there's truly no other option.
     if (!candidate) {
       const anyPool = (await subsonic.getRandomSongs(20))
         .filter((s) => !_ignoredSet.has(`${s.title.toLowerCase().trim()}\0${s.artist.toLowerCase().trim()}`));
-      candidate = anyPool[Math.floor(Math.random() * anyPool.length)];
+      const nonRecent = anyPool.filter((s) => !_recentIds.includes(s.id));
+      const fallbackPool = nonRecent.length > 0 ? nonRecent : anyPool;
+      candidate = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
     }
 
     if (candidate) {
@@ -676,6 +683,28 @@ export function toggleAutoDJ() {
     startQueueMonitor();
     startVisCycler();
     startAutoGain();
+    // Always unlock crossfadeAudio inside the user gesture so cf.play() can fire later
+    // from timeupdate (non-gesture context) without being blocked by autoplay policy.
+    warmUpCrossfadeAudio();
+    const wasPlaying = get(isPlaying) || !!get(currentTrack);
+    if (!wasPlaying) {
+      // Unlock the primary audio element NOW while we're inside the user gesture — browsers block
+      // autoplay if play() is called more than ~1s after the gesture. Calling play()+pause()
+      // synchronously primes the audio context so the later async play() succeeds.
+      const a = getAudio();
+      a.play().catch(() => {});
+      a.pause();
+
+      // Watch for the first track to land in the queue, then start playing it
+      const unsub = queue.subscribe((q) => {
+        if (q.length > 0) {
+          unsub();
+          const idx = get(queueIndex);
+          const startIdx = idx >= 0 && idx < q.length ? idx : 0;
+          jumpToQueue(startIdx);
+        }
+      });
+    }
     fillQueue();
   } else {
     registerCrossfadeChecker(null);

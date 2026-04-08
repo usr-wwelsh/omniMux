@@ -45,7 +45,6 @@
         class="autodj-btn"
         class:autodj-btn--active={$autoDJActive}
         onclick={toggleAutoDJ}
-        disabled={!$currentTrack}
         title={$autoDJActive ? 'Stop Auto DJ' : 'Start Auto DJ'}
       >
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/><circle cx="18" cy="7" r="3"/></svg>

@@ -49,6 +49,15 @@ export function registerCrossfadeChecker(fn: ((ct: number, dur: number) => void)
   _crossfadeChecker = fn;
 }
 
+// Call this inside a user-gesture handler to unlock crossfadeAudio for autoplay.
+// Without this, Safari (and strict-autoplay Chrome) may silently reject the first cf.play().
+export function warmUpCrossfadeAudio() {
+  if (typeof window === 'undefined') return;
+  if (!crossfadeAudio) crossfadeAudio = new Audio();
+  crossfadeAudio.play().catch(() => {});
+  crossfadeAudio.pause();
+}
+
 let _pushTimer: ReturnType<typeof setTimeout> | null = null;
 let _crossfadeSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 let _artworkFetchToken = 0; // incremented on each track change to cancel stale artwork fetches
