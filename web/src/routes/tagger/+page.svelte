@@ -15,6 +15,20 @@
   let bulkAlbum = $state('');
   let bulkGenre = $state('');
   let bulkYear = $state('');
+  let bulkIgnore = $state<'' | 'true' | 'false'>(''); // '' = don't change
+
+  type SortKey = 'title' | 'artist' | 'album' | 'genre' | 'year' | 'duration' | 'ignore_in_autodj';
+  let sortKey = $state<SortKey>('title');
+  let sortAsc = $state(true);
+
+  function setSort(key: SortKey) {
+    if (sortKey === key) {
+      sortAsc = !sortAsc;
+    } else {
+      sortKey = key;
+      sortAsc = true;
+    }
+  }
 
   $effect(() => {
     api.getTaggerTracks()
@@ -23,8 +37,14 @@
       .finally(() => (loading = false));
   });
 
-  let filtered = $derived(
-    filter.trim()
+  function sortVal(t: TaggerTrack): string | number | boolean {
+    if (sortKey === 'duration') return t.duration;
+    if (sortKey === 'ignore_in_autodj') return t.ignore_in_autodj ? 1 : 0;
+    return (t[sortKey] || '').toLowerCase();
+  }
+
+  let filtered = $derived((() => {
+    const base = filter.trim()
       ? tracks.filter((t) => {
           const q = filter.toLowerCase();
           return (
@@ -34,8 +54,14 @@
             t.genre.toLowerCase().includes(q)
           );
         })
-      : tracks
-  );
+      : tracks;
+    return base.slice().sort((a, b) => {
+      const av = sortVal(a);
+      const bv = sortVal(b);
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return sortAsc ? cmp : -cmp;
+    });
+  })());
 
   let selectedTracks = $derived(tracks.filter((t) => selected.has(t.file_path)));
   let allFilteredSelected = $derived(
@@ -67,6 +93,7 @@
     bulkAlbum = '';
     bulkGenre = '';
     bulkYear = '';
+    bulkIgnore = '';
   }
 
   async function deleteTracks() {
@@ -94,7 +121,7 @@
     if (bulkGenre) tags.genre = bulkGenre;
     if (bulkYear) tags.year = bulkYear;
 
-    if (Object.keys(tags).length === 0) {
+    if (Object.keys(tags).length === 0 && bulkIgnore === '') {
       saveResult = 'No fields filled in.';
       return;
     }
@@ -102,22 +129,38 @@
     saving = true;
     saveResult = null;
     try {
-      const result = await api.writeTags([...selected], tags);
-      saveResult = `Updated ${result.updated} track${result.updated !== 1 ? 's' : ''}${result.errors.length ? ` · ${result.errors.length} error(s)` : ''}.`;
-      // Update local track data
-      for (const fp of selected) {
-        const idx = tracks.findIndex((t) => t.file_path === fp);
-        if (idx !== -1) {
-          tracks[idx] = {
-            ...tracks[idx],
-            ...(tags.title ? { title: tags.title } : {}),
-            ...(tags.artist ? { artist: tags.artist } : {}),
-            ...(tags.album ? { album: tags.album } : {}),
-            ...(tags.genre ? { genre: tags.genre } : {}),
-            ...(tags.year ? { year: tags.year } : {}),
-          };
+      const paths = [...selected];
+      const results: string[] = [];
+
+      if (Object.keys(tags).length > 0) {
+        const result = await api.writeTags(paths, tags);
+        results.push(`Updated ${result.updated} track${result.updated !== 1 ? 's' : ''}${result.errors.length ? ` · ${result.errors.length} tag error(s)` : ''}.`);
+        for (const fp of paths) {
+          const idx = tracks.findIndex((t) => t.file_path === fp);
+          if (idx !== -1) {
+            tracks[idx] = {
+              ...tracks[idx],
+              ...(tags.title ? { title: tags.title } : {}),
+              ...(tags.artist ? { artist: tags.artist } : {}),
+              ...(tags.album ? { album: tags.album } : {}),
+              ...(tags.genre ? { genre: tags.genre } : {}),
+              ...(tags.year ? { year: tags.year } : {}),
+            };
+          }
         }
       }
+
+      if (bulkIgnore !== '') {
+        const ignoreVal = bulkIgnore === 'true';
+        const flagResult = await api.setTrackFlags(paths, ignoreVal);
+        results.push(`DJ flag set for ${flagResult.updated} track${flagResult.updated !== 1 ? 's' : ''}${flagResult.errors.length ? ` · ${flagResult.errors.length} flag error(s)` : ''}.`);
+        for (const fp of paths) {
+          const idx = tracks.findIndex((t) => t.file_path === fp);
+          if (idx !== -1) tracks[idx] = { ...tracks[idx], ignore_in_autodj: ignoreVal };
+        }
+      }
+
+      saveResult = results.join(' ');
       clearBulk();
       selected = new Set();
     } catch (e: any) {
@@ -161,6 +204,11 @@
         <input class="bulk-field" placeholder="Album" bind:value={bulkAlbum} />
         <input class="bulk-field" placeholder="Genre" bind:value={bulkGenre} />
         <input class="bulk-field bulk-field--narrow" placeholder="Year" bind:value={bulkYear} />
+        <select class="bulk-field bulk-field--narrow" bind:value={bulkIgnore} title="Skip in Auto DJ">
+          <option value="">Skip DJ?</option>
+          <option value="false">No</option>
+          <option value="true">Yes</option>
+        </select>
       </div>
       <div class="bulk-actions">
         {#if saveResult}
@@ -199,12 +247,13 @@
                 onchange={toggleAll}
               />
             </th>
-            <th class="col-title">Title</th>
-            <th class="col-artist">Artist</th>
-            <th class="col-album">Album</th>
-            <th class="col-genre">Genre</th>
-            <th class="col-year">Year</th>
-            <th class="col-dur">Duration</th>
+            <th class="col-title col-sortable" onclick={() => setSort('title')}>Title{sortKey==='title' ? (sortAsc?' ↑':' ↓') : ''}</th>
+            <th class="col-artist col-sortable" onclick={() => setSort('artist')}>Artist{sortKey==='artist' ? (sortAsc?' ↑':' ↓') : ''}</th>
+            <th class="col-album col-sortable" onclick={() => setSort('album')}>Album{sortKey==='album' ? (sortAsc?' ↑':' ↓') : ''}</th>
+            <th class="col-genre col-sortable" onclick={() => setSort('genre')}>Genre{sortKey==='genre' ? (sortAsc?' ↑':' ↓') : ''}</th>
+            <th class="col-year col-sortable" onclick={() => setSort('year')}>Year{sortKey==='year' ? (sortAsc?' ↑':' ↓') : ''}</th>
+            <th class="col-dur col-sortable" onclick={() => setSort('duration')}>Duration{sortKey==='duration' ? (sortAsc?' ↑':' ↓') : ''}</th>
+            <th class="col-skip col-sortable" onclick={() => setSort('ignore_in_autodj')}>Skip DJ{sortKey==='ignore_in_autodj' ? (sortAsc?' ↑':' ↓') : ''}</th>
           </tr>
         </thead>
         <tbody>
@@ -226,6 +275,11 @@
               <td class="col-genre">{track.genre || '—'}</td>
               <td class="col-year">{track.year || '—'}</td>
               <td class="col-dur">{track.duration ? formatDuration(track.duration) : '—'}</td>
+              <td class="col-skip">
+                {#if track.ignore_in_autodj}
+                  <span class="skip-badge">Skip</span>
+                {/if}
+              </td>
             </tr>
           {/each}
         </tbody>
@@ -313,6 +367,11 @@
     flex: 0 0 80px;
   }
 
+  select.bulk-field {
+    appearance: none;
+    cursor: pointer;
+  }
+
   .bulk-field:focus {
     border-color: var(--accent, #1db954);
   }
@@ -397,6 +456,15 @@
     font-size: 13px;
   }
 
+  .col-sortable {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .col-sortable:hover {
+    color: var(--text-primary);
+  }
+
   .track-table thead th {
     padding: 10px 12px;
     text-align: left;
@@ -444,6 +512,19 @@
   .col-genre { max-width: 120px; color: var(--text-subdued); }
   .col-year { width: 60px; color: var(--text-subdued); }
   .col-dur { width: 70px; color: var(--text-subdued); text-align: right; }
+  .col-skip { width: 64px; text-align: center; }
+
+  .skip-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(224, 82, 82, 0.15);
+    color: #e05252;
+  }
 
   .track-count {
     font-size: 12px;

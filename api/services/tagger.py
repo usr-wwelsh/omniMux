@@ -25,6 +25,19 @@ def _read_tags(file_path: Path) -> dict | None:
         return None
 
 
+def read_tags_for_path(file_path_str: str) -> dict | None:
+    """Public wrapper to read tags for a given file path string."""
+    root = Path(MUSIC_DIR).resolve()
+    path = Path(file_path_str).resolve()
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return None
+    if not path.exists() or path.suffix.lower() not in AUDIO_EXTENSIONS:
+        return None
+    return _read_tags(path)
+
+
 def list_tracks() -> list[dict]:
     tracks = []
     root = Path(MUSIC_DIR)

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Integer, Float, DateTime, Text, UniqueConstraint
+from sqlalchemy import String, Integer, Float, DateTime, Text, Boolean, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.database import Base
@@ -41,6 +41,16 @@ class UserSettings(Base):
     username: Mapped[str] = mapped_column(String(200), primary_key=True)
     data: Mapped[str] = mapped_column(Text, default='{}')
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class TrackFlags(Base):
+    __tablename__ = "track_flags"
+
+    title: Mapped[str] = mapped_column(String(500), primary_key=True)
+    artist: Mapped[str] = mapped_column(String(500), primary_key=True)
+    ignore_in_autodj: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    __table_args__ = (UniqueConstraint("title", "artist"),)
 
 
 class TrackMapping(Base):

@@ -156,6 +156,25 @@ type Enrichment = { mood?: string; energy?: number; key?: string };
 // Persists between fillQueue calls — built up as we enrich song pools
 const _enrichCache = new Map<string, Enrichment>(); // navidrome song id → data
 
+// Ignored tracks cache: Set of "title\0artist" (lowercased) for fast lookup
+let _ignoredSet = new Set<string>();
+let _ignoredFetchedAt = 0;
+const IGNORED_TTL_MS = 60_000; // re-fetch at most once per minute
+
+async function _refreshIgnoredTracks(): Promise<void> {
+  if (Date.now() - _ignoredFetchedAt < IGNORED_TTL_MS) return;
+  try {
+    const ignored = await api.getIgnoredTracks();
+    _ignoredSet = new Set(ignored.map((t) => `${t.title.toLowerCase().trim()}\0${t.artist.toLowerCase().trim()}`));
+    _ignoredFetchedAt = Date.now();
+    if (ignored.length > 0) {
+      console.log(`[omniMux] Auto DJ: ${ignored.length} ignored track(s) loaded`, ignored.map((t) => `"${t.title}" by "${t.artist}"`));
+    }
+  } catch (e) {
+    console.warn('[omniMux] Auto DJ: failed to fetch ignored tracks:', e);
+  }
+}
+
 // Enrichment for the currently playing track
 let _currentEnrichment: Enrichment | null = null;
 
@@ -337,10 +356,19 @@ async function fillQueue() {
     const upcomingIds = new Set(q.slice(idx + 1).map((t) => t.id));
     const excludeIds = new Set([..._recentIds, ...upcomingIds]);
 
+    // Refresh ignored-tracks list (cached, re-fetched at most once per minute)
+    await _refreshIgnoredTracks();
+
     // Fetch a larger pool when personality filtering is active
     const poolSize = personality !== 'none' ? 80 : 50;
     let pool: Song[] = (await subsonic.getRandomSongs(poolSize))
-      .filter((s) => !excludeIds.has(s.id));
+      .filter((s) => !excludeIds.has(s.id))
+      .filter((s) => {
+        const key = `${s.title.toLowerCase().trim()}\0${s.artist.toLowerCase().trim()}`;
+        const ignored = _ignoredSet.has(key);
+        if (ignored) console.log(`[omniMux] Auto DJ: skipping ignored track "${s.title}" by "${s.artist}"`);
+        return !ignored;
+      });
 
     // Merge in mood-playlist songs if personality has keywords
     if (config.moodKeywords.length > 0) {
@@ -349,7 +377,11 @@ async function fillQueue() {
         if (moodSongs.length > 0) {
           const shuffled = moodSongs.sort(() => Math.random() - 0.5).slice(0, 30);
           const seen = new Set(pool.map((s) => s.id));
-          pool = pool.concat(shuffled.filter((s) => !seen.has(s.id) && !excludeIds.has(s.id)));
+          pool = pool.concat(shuffled.filter((s) =>
+            !seen.has(s.id) &&
+            !excludeIds.has(s.id) &&
+            !_ignoredSet.has(`${s.title.toLowerCase().trim()}\0${s.artist.toLowerCase().trim()}`)
+          ));
         }
       } catch {
         // Mood playlist lookup failed — use random pool as-is
@@ -481,9 +513,10 @@ async function fillQueue() {
       candidate = scored[Math.floor(Math.random() * Math.min(5, scored.length))];
     }
 
-    // Last resort: drop exclusions entirely (tiny library edge case)
+    // Last resort: drop exclusions entirely (tiny library edge case), but still respect ignore flag
     if (!candidate) {
-      const anyPool = await subsonic.getRandomSongs(20);
+      const anyPool = (await subsonic.getRandomSongs(20))
+        .filter((s) => !_ignoredSet.has(`${s.title.toLowerCase().trim()}\0${s.artist.toLowerCase().trim()}`));
       candidate = anyPool[Math.floor(Math.random() * anyPool.length)];
     }
 

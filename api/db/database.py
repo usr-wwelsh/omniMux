@@ -19,7 +19,7 @@ class Base(DeclarativeBase):
 
 
 async def init_db():
-    from db.models import Download, TrackMapping, UserSettings  # noqa: F401
+    from db.models import Download, TrackMapping, UserSettings, TrackFlags  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.execute(text("PRAGMA journal_mode=WAL"))

@@ -128,6 +128,7 @@ export interface TaggerTrack {
   genre: string;
   year: string;
   duration: number;
+  ignore_in_autodj: boolean;
 }
 
 export const api = {
@@ -261,6 +262,17 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ file_paths }),
     });
+  },
+
+  async setTrackFlags(file_paths: string[], ignore_in_autodj: boolean): Promise<{ updated: number; errors: string[] }> {
+    return request('/api/tagger/flags', {
+      method: 'POST',
+      body: JSON.stringify({ file_paths, ignore_in_autodj }),
+    });
+  },
+
+  async getIgnoredTracks(): Promise<Array<{ title: string; artist: string }>> {
+    return request('/api/tagger/ignored');
   },
 
   async getSettings(): Promise<Record<string, string>> {
