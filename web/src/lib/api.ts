@@ -69,6 +69,20 @@ export interface PlaylistImportResponse {
   playlist_name: string | null;
 }
 
+export interface ChannelPlaylist {
+  id: string;
+  title: string;
+  track_count: number;
+  thumbnail_url: string | null;
+  url: string;
+}
+
+export interface ChannelImportResponse {
+  queued: number;
+  already_cached: number;
+  failed_playlists: number;
+}
+
 export interface DeviceTrackInfo {
   id: string;
   title: string;
@@ -197,6 +211,17 @@ export const api = {
     return request('/api/import/playlist', {
       method: 'POST',
       body: JSON.stringify({ playlist_url, playlist_name: playlist_name || null }),
+    });
+  },
+
+  async getChannelPlaylists(url: string): Promise<ChannelPlaylist[]> {
+    return request(`/api/youtube/channel-playlists?url=${encodeURIComponent(url)}`);
+  },
+
+  async importChannel(playlists: Array<{ url: string; name: string }>): Promise<ChannelImportResponse> {
+    return request('/api/import/channel', {
+      method: 'POST',
+      body: JSON.stringify({ playlists }),
     });
   },
 

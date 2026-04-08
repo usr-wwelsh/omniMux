@@ -4,6 +4,7 @@
   import { onMount } from 'svelte';
   import { api, type DownloadStatus } from '$lib/api';
   import { isGuest } from '$lib/auth';
+  import YoutubeAccountModal from '../../components/YoutubeAccountModal.svelte';
 
   onMount(() => {
     if (get(isGuest)) goto('/');
@@ -51,6 +52,9 @@
       importing = false;
     }
   }
+
+  let showYoutubeModal = $state(false);
+  let ytImportResult = $state<{ totalQueued: number } | null>(null);
 
   let cancellingIds = $state<Set<number>>(new Set());
 
@@ -107,7 +111,13 @@
   {:else}
 
   <section class="import-section">
-    <h2 class="section-title">Import YouTube Playlist</h2>
+    <div class="section-header">
+      <h2 class="section-title">Import YouTube Playlist</h2>
+      <button class="channel-btn" onclick={() => { showYoutubeModal = true; ytImportResult = null; }}>
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19.59 7c-.33-1.16-1.3-2.07-2.49-2.4C15.12 4.17 12 4 12 4s-3.12.17-5.1.6C5.71 4.93 4.74 5.84 4.41 7 4 9.01 4 12 4 12s0 2.99.41 5c.33 1.16 1.3 2.07 2.49 2.4C8.88 19.83 12 20 12 20s3.12-.17 5.1-.6c1.19-.33 2.16-1.24 2.49-2.4C20 14.99 20 12 20 12s0-2.99-.41-5zM10 15V9l5 3-5 3z"/></svg>
+        Import from YouTube Channel
+      </button>
+    </div>
     <div class="import-form">
       <input
         type="text"
@@ -142,6 +152,19 @@
       <p class="import-error">{importError}</p>
     {/if}
   </section>
+
+  {#if ytImportResult}
+    <p class="import-success">
+      Queued {ytImportResult.totalQueued} track{ytImportResult.totalQueued !== 1 ? 's' : ''} from YouTube channel.
+    </p>
+  {/if}
+
+  {#if showYoutubeModal}
+    <YoutubeAccountModal
+      onclose={() => (showYoutubeModal = false)}
+      onimported={(result) => { ytImportResult = result; showYoutubeModal = false; }}
+    />
+  {/if}
 
   {#if loading}
     <p class="status-text">Loading...</p>
@@ -219,10 +242,38 @@
     margin-bottom: 32px;
   }
 
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
   .section-title {
     font-size: 16px;
     font-weight: 700;
-    margin-bottom: 14px;
+    margin: 0;
+  }
+
+  .channel-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    background: var(--bg-elevated);
+    border: none;
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 600;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+
+  .channel-btn:hover {
+    background: var(--bg-highlight);
   }
 
   .import-form {

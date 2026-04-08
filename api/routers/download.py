@@ -62,6 +62,29 @@ class PlaylistImportResponse(BaseModel):
     playlist_name: str | None = None
 
 
+class ChannelPlaylist(BaseModel):
+    id: str
+    title: str
+    track_count: int
+    thumbnail_url: str | None = None
+    url: str
+
+
+class ChannelImportItem(BaseModel):
+    url: str
+    name: str
+
+
+class ChannelImportRequest(BaseModel):
+    playlists: list[ChannelImportItem]
+
+
+class ChannelImportResponse(BaseModel):
+    queued: int
+    already_cached: int
+    failed_playlists: int
+
+
 @router.post("/download", response_model=DownloadResponse)
 async def start_download(
     body: DownloadRequest,
@@ -230,6 +253,121 @@ async def import_playlist(
         download_ids=download_ids,
         playlist_name=body.playlist_name or None,
     )
+
+
+_extraction_semaphore = asyncio.Semaphore(2)
+
+
+@router.post("/import/channel", response_model=ChannelImportResponse)
+async def import_channel(
+    body: ChannelImportRequest,
+    user: UserContext = Depends(require_non_guest),
+    db=Depends(get_db),
+):
+    total_queued = 0
+    total_cached = 0
+    failed_playlists = 0
+
+    async def extract_one(item: ChannelImportItem, stagger_delay: float) -> list[dict]:
+        await asyncio.sleep(stagger_delay)
+        async with _extraction_semaphore:
+            return await asyncio.to_thread(_extract_playlist, item.url)
+
+    # Stagger each task by 1.5s so 2 concurrent extractions stay spread apart
+    tasks = [
+        asyncio.create_task(extract_one(item, i * 1.5))
+        for i, item in enumerate(body.playlists)
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for item, entries in zip(body.playlists, results):
+        if isinstance(entries, Exception) or not entries:
+            failed_playlists += 1
+            continue
+
+        for entry in entries:
+            youtube_id = entry.get("id", "")
+            if not youtube_id:
+                continue
+            title = entry.get("title") or "Unknown"
+            if title in ("[Deleted video]", "[Private video]"):
+                continue
+
+            existing = await db.execute(
+                select(TrackMapping).where(TrackMapping.youtube_id == youtube_id)
+            )
+            if existing.scalar_one_or_none():
+                total_cached += 1
+                continue
+
+            dl = Download(
+                youtube_id=youtube_id,
+                youtube_url=f"https://www.youtube.com/watch?v={youtube_id}",
+                title=title,
+                artist=entry.get("channel") or entry.get("uploader") or "Unknown",
+                status="queued",
+                playlist_name=item.name or None,
+                navidrome_username=user.username,
+                navidrome_password=user.password,
+            )
+            db.add(dl)
+            await db.commit()
+            await db.refresh(dl)
+            _spawn_download(dl.id, user.username, user.password)
+            total_queued += 1
+
+    return ChannelImportResponse(
+        queued=total_queued,
+        already_cached=total_cached,
+        failed_playlists=failed_playlists,
+    )
+
+
+@router.get("/youtube/channel-playlists", response_model=list[ChannelPlaylist])
+async def get_channel_playlists(
+    url: str,
+    user: UserContext = Depends(require_non_guest),
+):
+    playlists = await asyncio.to_thread(_extract_channel_playlists, url)
+    return playlists
+
+
+def _extract_channel_playlists(url: str) -> list[dict]:
+    import yt_dlp
+
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": "in_playlist",
+        "lazy_playlist": False,
+        "skip_download": True,
+        "ignoreerrors": True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if not info:
+                return []
+            entries = info.get("entries", []) or []
+            playlists = []
+            for e in entries:
+                if not e:
+                    continue
+                playlist_id = e.get("id", "")
+                if not playlist_id:
+                    continue
+                thumbnails = e.get("thumbnails") or []
+                thumbnail_url = thumbnails[-1].get("url") if thumbnails else e.get("thumbnail")
+                playlists.append({
+                    "id": playlist_id,
+                    "title": e.get("title") or "Unknown Playlist",
+                    "track_count": e.get("playlist_count") or e.get("video_count") or 0,
+                    "thumbnail_url": thumbnail_url,
+                    "url": e.get("url") or f"https://www.youtube.com/playlist?list={playlist_id}",
+                })
+            return playlists
+    except Exception:
+        return []
 
 
 def _extract_playlist(url: str) -> list[dict]:
