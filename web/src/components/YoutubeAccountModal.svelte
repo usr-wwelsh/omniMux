@@ -15,7 +15,6 @@
   let selected = $state<Set<string>>(new Set());
   let importError = $state('');
   let totalQueued = $state(0);
-  let failedPlaylists = $state(0);
 
   async function fetchPlaylists() {
     if (!channelUrl.trim()) return;
@@ -60,13 +59,10 @@
     stage = 'importing';
     importError = '';
     try {
-      const result = await api.importChannel(
-        toImport.map((p) => ({ url: p.url, name: p.title }))
-      );
-      totalQueued = result.queued;
-      failedPlaylists = result.failed_playlists;
+      await api.importChannel(toImport.map((p) => ({ url: p.url, name: p.title })));
+      totalQueued = toImport.length;
       stage = 'done';
-      onimported({ totalQueued: result.queued });
+      onimported({ totalQueued: toImport.length });
     } catch (e: any) {
       importError = e.message || 'Import failed';
       stage = 'selecting';
@@ -161,10 +157,8 @@
   {:else if stage === 'done'}
     <div class="center-state done">
       <svg viewBox="0 0 24 24" width="32" height="32" fill="currentColor" style="color: var(--accent)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-      <span>Queued <strong>{totalQueued}</strong> track{totalQueued !== 1 ? 's' : ''} for download.</span>
-      {#if failedPlaylists > 0}
-        <span style="font-size: 12px; color: var(--text-subdued)">{failedPlaylists} playlist{failedPlaylists !== 1 ? 's' : ''} could not be fetched (rate limited or unavailable)</span>
-      {/if}
+      <span>Fetching <strong>{totalQueued}</strong> playlist{totalQueued !== 1 ? 's' : ''} in the background.</span>
+      <span style="font-size: 12px; color: var(--text-subdued)">Tracks will appear in the downloads queue as they're found.</span>
       <button class="action-btn" onclick={onclose}>Done</button>
     </div>
   {/if}

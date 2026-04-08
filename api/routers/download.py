@@ -256,6 +256,7 @@ async def import_playlist(
 
 
 _extraction_semaphore = asyncio.Semaphore(2)
+_channel_import_tasks: set[asyncio.Task] = set()
 
 
 @router.post("/import/channel", response_model=ChannelImportResponse)
@@ -264,63 +265,60 @@ async def import_channel(
     user: UserContext = Depends(require_non_guest),
     db=Depends(get_db),
 ):
-    total_queued = 0
-    total_cached = 0
-    failed_playlists = 0
+    async def _run(playlists: list[ChannelImportItem]) -> None:
+        from db.database import async_session
 
-    async def extract_one(item: ChannelImportItem, stagger_delay: float) -> list[dict]:
-        await asyncio.sleep(stagger_delay)
-        async with _extraction_semaphore:
-            return await asyncio.to_thread(_extract_playlist, item.url)
+        async def extract_one(item: ChannelImportItem, stagger_delay: float) -> tuple[ChannelImportItem, list[dict]]:
+            await asyncio.sleep(stagger_delay)
+            async with _extraction_semaphore:
+                entries = await asyncio.to_thread(_extract_playlist, item.url)
+                return item, entries
 
-    # Stagger each task by 1.5s so 2 concurrent extractions stay spread apart
-    tasks = [
-        asyncio.create_task(extract_one(item, i * 1.5))
-        for i, item in enumerate(body.playlists)
-    ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+        tasks = [
+            asyncio.create_task(extract_one(item, i * 1.5))
+            for i, item in enumerate(playlists)
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    for item, entries in zip(body.playlists, results):
-        if isinstance(entries, Exception) or not entries:
-            failed_playlists += 1
-            continue
+        async with async_session() as session:
+            for result in results:
+                if isinstance(result, Exception):
+                    continue
+                item, entries = result
+                if not entries:
+                    continue
+                for entry in entries:
+                    youtube_id = entry.get("id", "")
+                    if not youtube_id:
+                        continue
+                    title = entry.get("title") or "Unknown"
+                    if title in ("[Deleted video]", "[Private video]"):
+                        continue
+                    existing = await session.execute(
+                        select(TrackMapping).where(TrackMapping.youtube_id == youtube_id)
+                    )
+                    if existing.scalar_one_or_none():
+                        continue
+                    dl = Download(
+                        youtube_id=youtube_id,
+                        youtube_url=f"https://www.youtube.com/watch?v={youtube_id}",
+                        title=title,
+                        artist=entry.get("channel") or entry.get("uploader") or "Unknown",
+                        status="queued",
+                        playlist_name=item.name or None,
+                        navidrome_username=user.username,
+                        navidrome_password=user.password,
+                    )
+                    session.add(dl)
+                    await session.commit()
+                    await session.refresh(dl)
+                    _spawn_download(dl.id, user.username, user.password)
 
-        for entry in entries:
-            youtube_id = entry.get("id", "")
-            if not youtube_id:
-                continue
-            title = entry.get("title") or "Unknown"
-            if title in ("[Deleted video]", "[Private video]"):
-                continue
+    task = asyncio.create_task(_run(body.playlists))
+    _channel_import_tasks.add(task)
+    task.add_done_callback(_channel_import_tasks.discard)
 
-            existing = await db.execute(
-                select(TrackMapping).where(TrackMapping.youtube_id == youtube_id)
-            )
-            if existing.scalar_one_or_none():
-                total_cached += 1
-                continue
-
-            dl = Download(
-                youtube_id=youtube_id,
-                youtube_url=f"https://www.youtube.com/watch?v={youtube_id}",
-                title=title,
-                artist=entry.get("channel") or entry.get("uploader") or "Unknown",
-                status="queued",
-                playlist_name=item.name or None,
-                navidrome_username=user.username,
-                navidrome_password=user.password,
-            )
-            db.add(dl)
-            await db.commit()
-            await db.refresh(dl)
-            _spawn_download(dl.id, user.username, user.password)
-            total_queued += 1
-
-    return ChannelImportResponse(
-        queued=total_queued,
-        already_cached=total_cached,
-        failed_playlists=failed_playlists,
-    )
+    return ChannelImportResponse(queued=0, already_cached=0, failed_playlists=0)
 
 
 @router.get("/youtube/channel-playlists", response_model=list[ChannelPlaylist])
