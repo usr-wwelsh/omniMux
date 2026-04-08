@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { login } from '$lib/auth';
   import { goto } from '$app/navigation';
@@ -7,6 +8,17 @@
   let password = $state('');
   let error = $state('');
   let loading = $state(false);
+  let guestEnabled = $state(false);
+  let guestLoading = $state(false);
+
+  onMount(async () => {
+    try {
+      const status = await api.guestStatus();
+      guestEnabled = status.enabled;
+    } catch {
+      // API not ready or unavailable — guest link stays hidden
+    }
+  });
 
   async function handleLogin(e: Event) {
     e.preventDefault();
@@ -14,12 +26,26 @@
     loading = true;
     try {
       const result = await api.login(username, password);
-      login(result.token, username, password);
+      login(result.token, username, password, result.role);
       goto('/');
     } catch (err: any) {
       error = err.message || 'Login failed';
     } finally {
       loading = false;
+    }
+  }
+
+  async function handleGuestLogin() {
+    guestLoading = true;
+    error = '';
+    try {
+      const result = await api.guestLogin();
+      login(result.token, result.username, result.password, result.role);
+      goto('/');
+    } catch (err: any) {
+      error = err.message || 'Guest login failed';
+    } finally {
+      guestLoading = false;
     }
   }
 </script>
@@ -54,6 +80,12 @@
         {loading ? 'Signing in...' : 'Sign in'}
       </button>
     </form>
+
+    {#if guestEnabled}
+      <button class="guest-link" onclick={handleGuestLogin} disabled={guestLoading}>
+        {guestLoading ? 'Signing in...' : 'No Navidrome account? Click here to continue as guest'}
+      </button>
+    {/if}
   </div>
 </div>
 
@@ -134,6 +166,28 @@
 
   .login-btn:disabled {
     opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .guest-link {
+    margin-top: 20px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    transition: color 0.15s;
+    padding: 0;
+  }
+
+  .guest-link:hover:not(:disabled) {
+    color: var(--text-primary);
+  }
+
+  .guest-link:disabled {
+    opacity: 0.5;
     cursor: not-allowed;
   }
 </style>

@@ -31,6 +31,31 @@ async def validate_credentials(username: str, password: str) -> bool:
         return sr.get("status") == "ok"
 
 
+async def create_navidrome_user(admin_username: str, admin_password: str, new_username: str, new_password: str) -> bool:
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{NAVIDROME_URL}/auth/login",
+            json={"username": admin_username, "password": admin_password},
+        )
+        if resp.status_code != 200:
+            return False
+        nd_token = resp.json().get("token")
+        if not nd_token:
+            return False
+        resp = await client.post(
+            f"{NAVIDROME_URL}/api/user",
+            json={
+                "userName": new_username,
+                "name": "Guest",
+                "password": new_password,
+                "isAdmin": False,
+                "email": "guest@omnimux.local",
+            },
+            headers={"X-ND-Authorization": f"Bearer {nd_token}"},
+        )
+        return resp.status_code in (200, 201)
+
+
 async def trigger_scan(username: str, password: str) -> None:
     params = _subsonic_params(username, password)
     async with httpx.AsyncClient() as client:

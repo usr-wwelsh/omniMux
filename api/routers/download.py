@@ -6,7 +6,7 @@ from sqlalchemy import select, desc
 
 from db.database import get_db
 from db.models import Download, TrackMapping
-from routers.auth import get_current_user, UserContext
+from routers.auth import get_current_user, require_non_guest, UserContext
 from services.download_worker import process_download
 from services.youtube import search_youtube
 
@@ -65,7 +65,7 @@ class PlaylistImportResponse(BaseModel):
 @router.post("/download", response_model=DownloadResponse)
 async def start_download(
     body: DownloadRequest,
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_non_guest),
     db=Depends(get_db),
 ):
     # Check if already cached
@@ -186,7 +186,7 @@ async def list_cached(
 @router.post("/import/playlist", response_model=PlaylistImportResponse)
 async def import_playlist(
     body: PlaylistImportRequest,
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_non_guest),
     db=Depends(get_db),
 ):
     entries = await asyncio.to_thread(_extract_playlist, body.playlist_url)

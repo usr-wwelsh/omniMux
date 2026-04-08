@@ -53,6 +53,14 @@ class TrackFlags(Base):
     __table_args__ = (UniqueConstraint("title", "artist"),)
 
 
+class SystemConfig(Base):
+    __tablename__ = "system_config"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class TrackMapping(Base):
     __tablename__ = "track_mappings"
 

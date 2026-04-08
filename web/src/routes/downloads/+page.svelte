@@ -1,5 +1,13 @@
 <script lang="ts">
+  import { get } from 'svelte/store';
+  import { goto } from '$app/navigation';
+  import { onMount } from 'svelte';
   import { api, type DownloadStatus } from '$lib/api';
+  import { isGuest } from '$lib/auth';
+
+  onMount(() => {
+    if (get(isGuest)) goto('/');
+  });
 
   let downloads = $state<DownloadStatus[]>([]);
   let loading = $state(true);
@@ -94,6 +102,10 @@
 <div class="downloads-page">
   <h1 class="page-title">Downloads</h1>
 
+  {#if $isGuest}
+    <p class="status-text">Guest accounts cannot download music.</p>
+  {:else}
+
   <section class="import-section">
     <h2 class="section-title">Import YouTube Playlist</h2>
     <div class="import-form">
@@ -184,6 +196,8 @@
         </div>
       {/each}
     </div>
+  {/if}
+
   {/if}
 </div>
 

@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
-from routers.auth import get_current_user, UserContext
+from routers.auth import require_non_guest, UserContext
 from services import cache
 from services.youtube import search_youtube, search_youtube_albums, get_youtube_album_tracks
 
@@ -37,7 +37,7 @@ _ALBUM_TTL = 7200    # 2 hours (slower to fetch, changes less)
 async def search_yt_album_tracks(
     artist: str = Query(..., min_length=1),
     album: str = Query(..., min_length=1),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_non_guest),
 ):
     key = f"album-tracks:{artist}:{album}"
     cached = cache.get(key, _ALBUM_TTL)
@@ -63,7 +63,7 @@ async def search_yt_album_tracks(
 async def search_yt_albums(
     q: str = Query(..., min_length=1),
     limit: Optional[int] = Query(10, ge=1, le=20),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_non_guest),
 ):
     key = f"albums:{q}:{limit}"
     cached = cache.get(key, _ALBUM_TTL)
@@ -89,7 +89,7 @@ async def search_yt_albums(
 async def search_yt(
     q: str = Query(..., min_length=1),
     limit: Optional[int] = Query(20, ge=1, le=50),
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_non_guest),
 ):
     key = f"tracks:{q}:{limit}"
     cached = cache.get(key, _TRACK_TTL)

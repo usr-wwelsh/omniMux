@@ -2,6 +2,7 @@
   import { api, type YouTubeResult } from '$lib/api';
   import { subsonic, type Artist, type Album, type Song } from '$lib/subsonic';
   import { playSong, formatTime } from '$lib/stores/player';
+  import { isGuest } from '$lib/auth';
   import TrackList from '../../components/TrackList.svelte';
   import AlbumCard from '../../components/AlbumCard.svelte';
 
@@ -60,16 +61,23 @@
   async function doSearch() {
     searching = true;
     try {
-      const [libraryResult, ytResult, cached] = await Promise.all([
-        subsonic.search(query),
-        api.searchYouTube(query),
-        api.getCachedIds(),
-      ]);
-      libraryArtists = libraryResult.artists;
-      libraryAlbums = libraryResult.albums;
-      librarySongs = libraryResult.songs;
-      youtubeResults = ytResult;
-      cachedIds = new Set(cached);
+      if ($isGuest) {
+        const libraryResult = await subsonic.search(query);
+        libraryArtists = libraryResult.artists;
+        libraryAlbums = libraryResult.albums;
+        librarySongs = libraryResult.songs;
+      } else {
+        const [libraryResult, ytResult, cached] = await Promise.all([
+          subsonic.search(query),
+          api.searchYouTube(query),
+          api.getCachedIds(),
+        ]);
+        libraryArtists = libraryResult.artists;
+        libraryAlbums = libraryResult.albums;
+        librarySongs = libraryResult.songs;
+        youtubeResults = ytResult;
+        cachedIds = new Set(cached);
+      }
       saveRecentSearch(query);
     } catch {
       // ignore
@@ -202,7 +210,7 @@
     </section>
   {/if}
 
-  {#if query.length >= 2 && !searching}
+  {#if query.length >= 2 && !searching && !$isGuest}
     <a href="/browse/{encodeURIComponent(query)}" class="browse-artist-row">
       <div class="browse-artist-avatar">{query.charAt(0).toUpperCase()}</div>
       <div class="browse-artist-info">
@@ -213,7 +221,7 @@
     </a>
   {/if}
 
-  {#if youtubeResults.length > 0}
+  {#if youtubeResults.length > 0 && !$isGuest}
     <section class="section">
       <h2 class="section-title">From YouTube</h2>
       <div class="yt-results">

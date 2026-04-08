@@ -1,5 +1,13 @@
 <script lang="ts">
+  import { get } from 'svelte/store';
+  import { goto } from '$app/navigation';
+  import { isGuest } from '$lib/auth';
+  import { onMount } from 'svelte';
   import { api, type TaggerTrack } from '$lib/api';
+
+  onMount(() => {
+    if (get(isGuest)) goto('/');
+  });
 
   let tracks = $state<TaggerTrack[]>([]);
   let loading = $state(true);

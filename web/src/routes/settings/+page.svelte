@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { theme, type Theme } from '$lib/stores/theme';
   import {
     crossfadeDuration, beatmatchEnabled, bpmTolerance,
     visCycleInterval, ambientIdleMinutes,
     djPersonality, PERSONALITY_CONFIGS, type DJPersonality,
   } from '$lib/stores/autodj';
+  import { isGuest } from '$lib/auth';
+  import { api } from '$lib/api';
 
   const themes: { value: Theme; label: string; description: string }[] = [
     { value: 'spotify', label: 'Spotify', description: 'Dark green — the default look' },
@@ -23,6 +26,30 @@
   ];
 
   const personalities = Object.entries(PERSONALITY_CONFIGS) as [DJPersonality, typeof PERSONALITY_CONFIGS[DJPersonality]][];
+
+  let guestEnabled = $state(false);
+  let guestToggling = $state(false);
+  let guestError = $state('');
+
+  onMount(async () => {
+    if (!$isGuest) {
+      const status = await api.guestStatus();
+      guestEnabled = status.enabled;
+    }
+  });
+
+  async function toggleGuest() {
+    guestToggling = true;
+    guestError = '';
+    try {
+      await api.setGuestEnabled(!guestEnabled);
+      guestEnabled = !guestEnabled;
+    } catch (e: any) {
+      guestError = e.message || 'Failed to update guest access';
+    } finally {
+      guestToggling = false;
+    }
+  }
 </script>
 
 <div class="settings">
@@ -156,6 +183,28 @@
       </div>
     </div>
   </section>
+
+  {#if !$isGuest}
+  <section class="settings-section">
+    <h2 class="section-title">Guest Access</h2>
+
+    <div class="setting-row">
+      <div class="setting-info">
+        <span class="setting-name">Allow guest login</span>
+        <span class="setting-desc">Creates an <code>omnimux_guest</code> account on Navidrome and shows a guest login link on the sign-in page. Guests can listen and use Auto DJ but cannot search YouTube or download tracks.</span>
+      </div>
+      <button
+        class="toggle-btn"
+        class:active={guestEnabled}
+        disabled={guestToggling}
+        onclick={toggleGuest}
+      >{guestEnabled ? 'On' : 'Off'}</button>
+    </div>
+    {#if guestError}
+      <p class="guest-error">{guestError}</p>
+    {/if}
+  </section>
+  {/if}
 
   <section class="settings-section">
     <h2 class="section-title">About</h2>
@@ -381,6 +430,20 @@
   .segment-btn.active {
     background: var(--accent);
     color: #fff;
+  }
+
+  .guest-error {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--danger);
+  }
+
+  code {
+    font-family: monospace;
+    background: var(--bg-elevated);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 12px;
   }
 
   .about-row {

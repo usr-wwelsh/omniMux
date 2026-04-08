@@ -132,10 +132,29 @@ export interface TaggerTrack {
 }
 
 export const api = {
-  async login(username: string, password: string): Promise<{ token: string; username: string }> {
+  async login(username: string, password: string): Promise<{ token: string; username: string; role: string }> {
     return request('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
+    });
+  },
+
+  async guestStatus(): Promise<{ enabled: boolean }> {
+    const res = await fetch('/api/auth/guest/status');
+    if (!res.ok) return { enabled: false };
+    return res.json();
+  },
+
+  async guestLogin(): Promise<{ token: string; username: string; role: string; password: string }> {
+    const res = await fetch('/api/auth/guest/login', { method: 'POST' });
+    if (!res.ok) throw new Error('Guest login failed');
+    return res.json();
+  },
+
+  async setGuestEnabled(enabled: boolean): Promise<void> {
+    return request('/api/auth/guest/enabled', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
     });
   },
 
