@@ -469,6 +469,13 @@ export async function addSongToQueue(song: Song) {
   schedulePushQueue(activeOrMe()); // never steals active
 }
 
+export function clearQueue() {
+  queue.set([]);
+  queueIndex.set(-1);
+  if (isThisDeviceActive()) isPlaying.set(false);
+  schedulePushQueue(activeOrMe());
+}
+
 export function removeFromQueue(index: number) {
   const q = get(queue);
   const idx = get(queueIndex);

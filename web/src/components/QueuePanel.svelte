@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { queue, queueIndex, jumpToQueue, removeFromQueue, reorderQueue, formatTime } from '$lib/stores/player';
+  import { queue, queueIndex, jumpToQueue, removeFromQueue, reorderQueue, clearQueue, formatTime } from '$lib/stores/player';
 
   // Mouse drag state
   let dragging = $state(-1);
@@ -91,6 +91,10 @@
   {#if $queue.length === 0}
     <p class="queue-empty">Queue is empty</p>
   {:else}
+    <div class="queue-header">
+      <span class="queue-count">{$queue.length} tracks</span>
+      <button class="queue-clear-btn" onclick={clearQueue} title="Clear queue">Clear</button>
+    </div>
     <div class="queue-list">
       {#each $queue as track, i}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -148,6 +152,31 @@
     color: var(--text-subdued);
     text-align: center;
     padding: 40px 0;
+  }
+
+  .queue-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 4px 8px;
+  }
+
+  .queue-count {
+    font-size: 12px;
+    color: var(--text-subdued);
+  }
+
+  .queue-clear-btn {
+    font-size: 12px;
+    color: var(--text-subdued);
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .queue-clear-btn:hover {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
   }
 
   .queue-list {

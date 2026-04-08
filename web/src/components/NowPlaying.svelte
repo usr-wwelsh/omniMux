@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { currentTrack, queue, queueIndex, formatTime } from '$lib/stores/player';
+  import { currentTrack, queue, queueIndex, clearQueue, formatTime } from '$lib/stores/player';
 
   let collapsed = $state(false);
 </script>
@@ -31,7 +31,10 @@
 
       {#if $queue.length > 1}
         <div class="np-queue">
-          <h3 class="np-queue-title">Queue</h3>
+          <div class="np-queue-header">
+            <h3 class="np-queue-title">Queue</h3>
+            <button class="np-queue-clear" onclick={clearQueue} title="Clear queue">Clear</button>
+          </div>
           <div class="np-queue-list">
             {#each $queue as track, i}
               {#if i > $queueIndex}
@@ -149,13 +152,33 @@
     margin-top: 24px;
   }
 
+  .np-queue-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
   .np-queue-title {
     font-size: 14px;
     font-weight: 700;
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin-bottom: 12px;
+    margin-bottom: 0;
+  }
+
+  .np-queue-clear {
+    font-size: 12px;
+    color: var(--text-subdued);
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .np-queue-clear:hover {
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 10%, transparent);
   }
 
   .np-queue-list {
