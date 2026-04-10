@@ -20,6 +20,7 @@ def _read_tags(file_path: Path) -> dict | None:
             "genre": (audio.get("genre") or [""])[0],
             "year": (audio.get("date") or [""])[0][:4],
             "duration": int(audio.info.length) if audio.info else 0,
+            "added_date": int(file_path.stat().st_mtime),
         }
     except Exception:
         return None

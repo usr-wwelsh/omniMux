@@ -25,7 +25,7 @@
   let bulkYear = $state('');
   let bulkIgnore = $state<'' | 'true' | 'false'>(''); // '' = don't change
 
-  type SortKey = 'title' | 'artist' | 'album' | 'genre' | 'year' | 'duration' | 'ignore_in_autodj';
+  type SortKey = 'title' | 'artist' | 'album' | 'genre' | 'year' | 'duration' | 'added_date' | 'ignore_in_autodj';
   let sortKey = $state<SortKey>('title');
   let sortAsc = $state(true);
 
@@ -47,8 +47,14 @@
 
   function sortVal(t: TaggerTrack): string | number | boolean {
     if (sortKey === 'duration') return t.duration;
+    if (sortKey === 'added_date') return t.added_date;
     if (sortKey === 'ignore_in_autodj') return t.ignore_in_autodj ? 1 : 0;
     return (t[sortKey] || '').toLowerCase();
+  }
+
+  function formatDate(ts: number): string {
+    if (!ts) return '—';
+    return new Date(ts * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   let filtered = $derived((() => {
@@ -261,6 +267,7 @@
             <th class="col-genre col-sortable" onclick={() => setSort('genre')}>Genre{sortKey==='genre' ? (sortAsc?' ↑':' ↓') : ''}</th>
             <th class="col-year col-sortable" onclick={() => setSort('year')}>Year{sortKey==='year' ? (sortAsc?' ↑':' ↓') : ''}</th>
             <th class="col-dur col-sortable" onclick={() => setSort('duration')}>Duration{sortKey==='duration' ? (sortAsc?' ↑':' ↓') : ''}</th>
+            <th class="col-added col-sortable" onclick={() => setSort('added_date')}>Added{sortKey==='added_date' ? (sortAsc?' ↑':' ↓') : ''}</th>
             <th class="col-skip col-sortable" onclick={() => setSort('ignore_in_autodj')}>Skip DJ{sortKey==='ignore_in_autodj' ? (sortAsc?' ↑':' ↓') : ''}</th>
           </tr>
         </thead>
@@ -283,6 +290,7 @@
               <td class="col-genre">{track.genre || '—'}</td>
               <td class="col-year">{track.year || '—'}</td>
               <td class="col-dur">{track.duration ? formatDuration(track.duration) : '—'}</td>
+              <td class="col-added">{formatDate(track.added_date)}</td>
               <td class="col-skip">
                 {#if track.ignore_in_autodj}
                   <span class="skip-badge">Skip</span>
@@ -520,6 +528,7 @@
   .col-genre { max-width: 120px; color: var(--text-subdued); }
   .col-year { width: 60px; color: var(--text-subdued); }
   .col-dur { width: 70px; color: var(--text-subdued); text-align: right; }
+  .col-added { width: 110px; color: var(--text-subdued); white-space: nowrap; }
   .col-skip { width: 64px; text-align: center; }
 
   .skip-badge {

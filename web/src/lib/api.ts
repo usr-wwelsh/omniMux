@@ -142,6 +142,7 @@ export interface TaggerTrack {
   genre: string;
   year: string;
   duration: number;
+  added_date: number;
   ignore_in_autodj: boolean;
 }
 
