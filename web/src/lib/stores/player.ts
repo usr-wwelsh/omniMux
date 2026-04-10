@@ -42,7 +42,7 @@ soloMode.subscribe((v) => {
 let audio: HTMLAudioElement | null = null;
 let crossfadeAudio: HTMLAudioElement | null = null;
 let _isCrossfading = false;
-let _crossfadeRafId: number | null = null;
+let _crossfadeTimerId: ReturnType<typeof setTimeout> | null = null;
 let _crossfadeChecker: ((ct: number, dur: number) => void) | null = null;
 
 export function registerCrossfadeChecker(fn: ((ct: number, dur: number) => void) | null) {
@@ -613,9 +613,9 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
         cf.src = '';
         cf.volume = 0;
       }
-      if (_crossfadeRafId !== null) {
-        cancelAnimationFrame(_crossfadeRafId);
-        _crossfadeRafId = null;
+      if (_crossfadeTimerId !== null) {
+        clearTimeout(_crossfadeTimerId);
+        _crossfadeTimerId = null;
       }
     }
     _crossfadeSafetyTimer = null;
@@ -660,7 +660,7 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
       cf.playbackRate = startPlaybackRate + (1.0 - startPlaybackRate) * eased;
 
       if (t < 1) {
-        _crossfadeRafId = requestAnimationFrame(fade);
+        _crossfadeTimerId = setTimeout(() => fade(performance.now()), 16);
       } else {
         // Transfer playback back to primary (keeps Web Audio analyser chain intact).
         // We load primary with the same URL now so it buffers during the fade. Seek to
@@ -681,7 +681,7 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
               cf.volume = 0;
               cf.playbackRate = 1.0;
               _isCrossfading = false;
-              _crossfadeRafId = null;
+              _crossfadeTimerId = null;
               // Issue 10: set blackout window and push immediately so server has the
               // correct index before the next poll, preventing other devices from reverting.
               _crossfadeBlackoutUntil = Date.now() + CROSSFADE_BLACKOUT_MS;
@@ -726,7 +726,7 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
         }
       }
     }
-    _crossfadeRafId = requestAnimationFrame(fade);
+    _crossfadeTimerId = setTimeout(() => fade(performance.now()), 16);
   }
 
   // If already preloaded and playing, start fade immediately
@@ -748,9 +748,9 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
 
 export function stopCrossfade() {
   if (_crossfadeSafetyTimer) { clearTimeout(_crossfadeSafetyTimer); _crossfadeSafetyTimer = null; }
-  if (_crossfadeRafId !== null) {
-    cancelAnimationFrame(_crossfadeRafId);
-    _crossfadeRafId = null;
+  if (_crossfadeTimerId !== null) {
+    clearTimeout(_crossfadeTimerId);
+    _crossfadeTimerId = null;
   }
   if (crossfadeAudio) {
     crossfadeAudio.pause();
