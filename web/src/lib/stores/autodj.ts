@@ -7,7 +7,7 @@ import {
   songToTrack, addToQueue, jumpToQueue, getAudio,
   startCrossfade, stopCrossfade, registerCrossfadeChecker, preloadCrossfadeTrack, warmUpCrossfadeAudio,
 } from './player';
-import { visMode, type VisMode, startAutoGain, stopAutoGain, getAnalyser, fillFrequencyData, overallFromBuf } from './visualizer';
+import { visMode, type VisMode, startAutoGain, stopAutoGain, freezeAutoGain, thawAutoGain, getAnalyser, fillFrequencyData, overallFromBuf } from './visualizer';
 import { showFullscreenPlayer, artExpandRequested, autoDJToast } from './ui';
 
 // ── Persisted settings ────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ export const PERSONALITY_CONFIGS: Record<DJPersonality, PersonalityConfig> = {
     label: 'None', description: 'Standard Auto DJ',
     bpmMin: null, bpmMax: null, skipIntroSeconds: 0,
     moodKeywords: [], genreKeywords: [], excludeGenreKeywords: [],
-    pitchSlop: 0.012, energyDropThreshold: null, maxPlaySeconds: null,
+    pitchSlop: 0.005, energyDropThreshold: null, maxPlaySeconds: null,
     prioritizeHighBpm: false, minEnergy: null, maxEnergy: null,
     allowedMoods: null, harmonicMix: false,
   },
@@ -65,7 +65,7 @@ export const PERSONALITY_CONFIGS: Record<DJPersonality, PersonalityConfig> = {
     moodKeywords: ['energetic', 'upbeat', 'dance'],
     genreKeywords: ['dance', 'edm', 'electronic', 'house', 'techno', 'trance', 'electro', 'club'],
     excludeGenreKeywords: ['ambient', 'classical', 'new age', 'acoustic', 'folk', 'country', 'blues', 'jazz', 'sleep', 'meditation'],
-    pitchSlop: 0.010, energyDropThreshold: 0.15, maxPlaySeconds: 150,
+    pitchSlop: 0.004, energyDropThreshold: 0.15, maxPlaySeconds: 150,
     prioritizeHighBpm: false, minEnergy: 0.65, maxEnergy: null,
     allowedMoods: ['energetic', 'happy', 'upbeat', 'excited'],
     harmonicMix: true,
@@ -85,7 +85,7 @@ export const PERSONALITY_CONFIGS: Record<DJPersonality, PersonalityConfig> = {
     bpmMin: 75, bpmMax: 115, skipIntroSeconds: 0,
     moodKeywords: ['chill', 'mellow', 'lofi'],
     genreKeywords: [], excludeGenreKeywords: ['metal', 'punk', 'hardcore', 'edm'],
-    pitchSlop: 0.015, energyDropThreshold: null, maxPlaySeconds: null,
+    pitchSlop: 0.006, energyDropThreshold: null, maxPlaySeconds: null,
     prioritizeHighBpm: false, minEnergy: null, maxEnergy: 0.60,
     allowedMoods: ['chill', 'mellow', 'happy', 'peaceful', 'calm'],
     harmonicMix: true,
@@ -95,7 +95,7 @@ export const PERSONALITY_CONFIGS: Record<DJPersonality, PersonalityConfig> = {
     bpmMin: 130, bpmMax: null, skipIntroSeconds: 20,
     moodKeywords: ['energetic', 'intense', 'upbeat'],
     genreKeywords: [], excludeGenreKeywords: ['ambient', 'classical', 'new age', 'acoustic', 'folk', 'sleep'],
-    pitchSlop: 0.008, energyDropThreshold: null, maxPlaySeconds: 60,
+    pitchSlop: 0.003, energyDropThreshold: null, maxPlaySeconds: 60,
     prioritizeHighBpm: true, minEnergy: 0.70, maxEnergy: null,
     allowedMoods: ['energetic', 'intense', 'upbeat', 'excited', 'angry'],
     harmonicMix: false,
@@ -103,6 +103,15 @@ export const PERSONALITY_CONFIGS: Record<DJPersonality, PersonalityConfig> = {
 };
 
 export const djPersonality = persistedWritable<DJPersonality>('omnimux-dj-personality', 'none', (v) => v as DJPersonality);
+
+// For club/workout: if the incoming track is longer than 4 minutes, skip to the
+// halfway point (right before a likely peak) instead of the fixed intro offset.
+function resolveSkipIntro(config: PersonalityConfig, track: { duration: number }): number {
+  if (config.skipIntroSeconds > 0 && track.duration > 240) {
+    return Math.floor(track.duration * 0.5);
+  }
+  return config.skipIntroSeconds;
+}
 
 // ── Runtime state ─────────────────────────────────────────────────────────────
 
@@ -187,6 +196,10 @@ const SET_ENERGY_WINDOW = 6;
 const PRELOAD_AHEAD = 10; // seconds before crossfade window to start buffering
 let _crossfadeCheckActive = false;
 let _preloadTriggered = false;
+// Actual skip offset applied to the currently playing track (0 = started from beginning).
+// Tracked explicitly so the maxPlay timer starts from the right position.
+let _currentTrackSkipOffset = 0;
+let _pendingSkipOffset = 0; // skip offset for the track about to be crossfaded in
 
 // Energy-drop detection for Club/Workout personalities
 const ENERGY_HISTORY_MAX = 4;        // seconds of sustained low energy needed
@@ -226,7 +239,10 @@ function _sampleEnergy(ct: number): void {
       // Only lock out the normal crossfade check when we're actually starting a fade
       _crossfadeCheckActive = true;
       const cfSecs = Math.min(get(crossfadeDuration), 4); // quick exit on energy drop
-      startCrossfade(idx + 1, cfSecs, get(beatmatchEnabled), config.skipIntroSeconds, config.pitchSlop);
+      const skipSecs = resolveSkipIntro(config, q[idx + 1]);
+      _pendingSkipOffset = skipSecs;
+      freezeAutoGain();
+      startCrossfade(idx + 1, cfSecs, get(beatmatchEnabled), skipSecs, config.pitchSlop);
     } else {
       // No next track yet — kick off a fill so the end-of-track crossfade can fire normally
       fillQueue();
@@ -256,26 +272,32 @@ function crossfadeCheck(ct: number, dur: number) {
   const nextTrack = q[idx + 1];
 
   // Max-play-time early exit (Club/Workout personalities)
-  // Trigger crossfade once we've played maxPlaySeconds, but only if there's still
-  // more song left than the crossfade duration (so we don't double-fire near the end).
+  // Use _currentTrackSkipOffset (the offset actually applied when this track started)
+  // rather than recalculating — the first track and manually-played tracks start at 0.
   const maxPlay = config.maxPlaySeconds;
-  if (maxPlay !== null && ct >= maxPlay && remaining > cfSecs && !_crossfadeCheckActive) {
+  if (maxPlay !== null && ct >= _currentTrackSkipOffset + maxPlay && remaining > cfSecs && !_crossfadeCheckActive) {
     _crossfadeCheckActive = true;
-    const quickCf = Math.min(cfSecs, 4);
-    preloadCrossfadeTrack(nextTrack, config.skipIntroSeconds);
-    startCrossfade(idx + 1, quickCf, get(beatmatchEnabled), config.skipIntroSeconds, config.pitchSlop);
+    const skipSecsMax = resolveSkipIntro(config, nextTrack);
+    _pendingSkipOffset = skipSecsMax;
+    preloadCrossfadeTrack(nextTrack, skipSecsMax);
+    freezeAutoGain();
+    startCrossfade(idx + 1, cfSecs, get(beatmatchEnabled), skipSecsMax, config.pitchSlop);
     return;
   }
+
+  const skipSecs = resolveSkipIntro(config, nextTrack);
 
   // Preload next track early so it's buffered when the crossfade window opens
   if (!_preloadTriggered && remaining <= cfSecs + PRELOAD_AHEAD) {
     _preloadTriggered = true;
-    preloadCrossfadeTrack(nextTrack, config.skipIntroSeconds);
+    preloadCrossfadeTrack(nextTrack, skipSecs);
   }
 
   if (!_crossfadeCheckActive && remaining <= cfSecs) {
     _crossfadeCheckActive = true;
-    startCrossfade(idx + 1, cfSecs, get(beatmatchEnabled), config.skipIntroSeconds, config.pitchSlop);
+    _pendingSkipOffset = skipSecs;
+    freezeAutoGain();
+    startCrossfade(idx + 1, cfSecs, get(beatmatchEnabled), skipSecs, config.pitchSlop);
   }
 }
 
@@ -354,11 +376,13 @@ async function fillQueue() {
     const currentBpm = track?.bpm;
     const tolerance = get(bpmTolerance) / 100;
 
-    // Build exclusion set: recently played + songs already in the upcoming queue
+    // Build exclusion set: currently playing + recently played + songs already in the upcoming queue
     const q = get(queue);
     const idx = get(queueIndex);
+    const currentId = q[idx]?.id;
     const upcomingIds = new Set(q.slice(idx + 1).map((t) => t.id));
     const excludeIds = new Set([..._recentIds, ...upcomingIds]);
+    if (currentId) excludeIds.add(currentId);
 
     // Refresh ignored-tracks list (cached, re-fetched at most once per minute)
     await _refreshIgnoredTracks();
@@ -532,8 +556,9 @@ async function fillQueue() {
       // Re-read upcoming queue at append time to handle concurrent edits
       const currentQ = get(queue);
       const currentIdx = get(queueIndex);
+      const nowPlaying = currentQ[currentIdx]?.id;
       const nowUpcoming = new Set(currentQ.slice(currentIdx + 1).map((t) => t.id));
-      if (!nowUpcoming.has(newTrack.id)) {
+      if (!nowUpcoming.has(newTrack.id) && newTrack.id !== nowPlaying) {
         addToQueue(newTrack);
       }
       _fillFailures = 0;
@@ -679,6 +704,8 @@ export function toggleAutoDJ() {
     showFullscreenPlayer.set(true);
     artExpandRequested.update((n) => n + 1);
     _crossfadeCheckActive = false;
+    _currentTrackSkipOffset = 0;
+    _pendingSkipOffset = 0;
     registerCrossfadeChecker(crossfadeCheck);
     startQueueMonitor();
     startVisCycler();
@@ -729,6 +756,11 @@ currentTrack.subscribe((t) => {
   _energyDropFired = false;
   _energyHistory = [];
   _lastEnergySample = 0;
+  // Commit the skip offset that was applied to this incoming track, then thaw
+  // the gain so it calibrates fresh to the new track's loudness.
+  _currentTrackSkipOffset = _pendingSkipOffset;
+  _pendingSkipOffset = 0;
+  if (get(autoDJActive)) thawAutoGain();
 
   if (t?.id) {
     if (!_recentIds.includes(t.id)) {

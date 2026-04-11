@@ -16,7 +16,8 @@ if (browser) {
 // so these must be module-level singletons that survive art-mode open/close.
 
 let _ctx: AudioContext | null = null;
-let _analyser: AnalyserNode | null = null;
+let _analyser: AnalyserNode | null = null;      // vis + energy detection (fftSize=256, freq domain)
+let _loudnessNode: AnalyserNode | null = null;  // RMS/LUFS measurement (fftSize=4096, time domain)
 let _gainNode: GainNode | null = null;
 let _connected = false;
 
@@ -41,12 +42,17 @@ export function getAnalyser(): AnalyserNode | null {
     const source = _ctx.createMediaElementSource(audio);
     _gainNode = _ctx.createGain();
     _gainNode.gain.value = 1.0;
+    // Loudness analyser: large buffer (~93ms at 44.1kHz) for stable true-RMS measurement
+    _loudnessNode = _ctx.createAnalyser();
+    _loudnessNode.fftSize = 4096;
+    // Vis analyser: small buffer for responsive frequency data
     _analyser = _ctx.createAnalyser();
     _analyser.fftSize = 256; // 128 frequency bins
     _analyser.smoothingTimeConstant = 0.8;
-    // Must route back to destination or audio goes silent
+    // Chain: source → gain → loudness tap → vis tap → speakers
     source.connect(_gainNode);
-    _gainNode.connect(_analyser);
+    _gainNode.connect(_loudnessNode);
+    _loudnessNode.connect(_analyser);
     _analyser.connect(_ctx.destination);
     _connected = true;
   }
@@ -54,24 +60,53 @@ export function getAnalyser(): AnalyserNode | null {
   return _analyser;
 }
 
-// ── Auto gain normalization ──────────────────────────────────────────────────
+// ── Real-time loudness normalization ─────────────────────────────────────────
+// Targets a consistent LUFS level across all tracks using true RMS on time-domain
+// samples. Simplified ITU-R BS.1770 (no K-weighting — close enough for music).
+//
+// TARGET_LUFS: raise toward 0 for louder, lower toward -23 for quieter.
+// -14 is the streaming standard (Spotify/YouTube); a safe loud target.
+const TARGET_LUFS = -14;
+const GAIN_MAX    = 4.0;    // max boost: 4× = +12 dB
+const GAIN_MIN    = 0.05;   // max cut:  20× = -26 dB
+const SILENCE_RMS = 0.0005; // ~-66 dBFS — skip adjustments below this
 
+const RMS_WINDOW_SIZE = 6;  // sliding window: 6 × 150ms ≈ 900ms short-term average
+let _rmsHistory: number[] = [];
 let _autoGainTimer: ReturnType<typeof setInterval> | null = null;
 let _gainSmoothed = 1.0;
-const _AUTO_GAIN_TARGET = 0.09; // target normalized overall RMS
+let _gainFrozen = false; // true during crossfades so we don't fight the volume ramp
 
 export function startAutoGain(): void {
   if (_autoGainTimer) return;
   getAnalyser(); // ensure audio chain is initialized
   _autoGainTimer = setInterval(() => {
-    if (!_gainNode || !_analyser || !_ctx) return;
-    const buf = new Uint8Array(_analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
-    _analyser.getByteFrequencyData(buf);
-    const overall = overallFromBuf(buf);
-    if (overall < 0.01) return; // silence — don't adjust
-    const target = Math.min(Math.max(_AUTO_GAIN_TARGET / overall, 0.15), 4.0);
-    _gainSmoothed += (target - _gainSmoothed) * 0.03; // slow smoothing ~3s
-    _gainNode.gain.setTargetAtTime(_gainSmoothed, _ctx.currentTime, 0.8);
+    if (_gainFrozen) return;
+    if (!_gainNode || !_loudnessNode || !_ctx) return;
+
+    // True RMS from PCM samples (not frequency magnitudes)
+    const buf = new Float32Array(_loudnessNode.fftSize);
+    _loudnessNode.getFloatTimeDomainData(buf);
+    let sumSq = 0;
+    for (let i = 0; i < buf.length; i++) sumSq += buf[i] * buf[i];
+    const rms = Math.sqrt(sumSq / buf.length);
+    if (rms < SILENCE_RMS) return; // silence or pause — don't adjust
+
+    // Sliding window smooths over transient peaks so we track program loudness
+    _rmsHistory.push(rms);
+    if (_rmsHistory.length > RMS_WINDOW_SIZE) _rmsHistory.shift();
+    const avgRms = _rmsHistory.reduce((a, b) => a + b, 0) / _rmsHistory.length;
+
+    // LUFS estimate: simplified BS.1770 (no K-weighting; within ~1 dB for music)
+    const lufs = 20 * Math.log10(avgRms) - 0.691;
+    const gainDb = TARGET_LUFS - lufs;
+    const targetGain = Math.min(Math.max(10 ** (gainDb / 20), GAIN_MIN), GAIN_MAX);
+
+    // Asymmetric smoothing: cut fast (prevents clipping), boost slowly (no pumping)
+    const alpha = targetGain < _gainSmoothed ? 0.25 : 0.04;
+    _gainSmoothed += (targetGain - _gainSmoothed) * alpha;
+
+    _gainNode.gain.setTargetAtTime(_gainSmoothed, _ctx.currentTime, 0.05);
   }, 150);
 }
 
@@ -79,6 +114,17 @@ export function stopAutoGain(): void {
   if (_autoGainTimer) { clearInterval(_autoGainTimer); _autoGainTimer = null; }
   if (_gainNode && _ctx) _gainNode.gain.setTargetAtTime(1.0, _ctx.currentTime, 1.0);
   _gainSmoothed = 1.0;
+  _rmsHistory = [];
+  _gainFrozen = false;
+}
+
+/** Freeze gain during a crossfade so the normalizer doesn't fight the volume ramp. */
+export function freezeAutoGain(): void { _gainFrozen = true; }
+
+/** Unfreeze and clear history so the new track calibrates from scratch. */
+export function thawAutoGain(): void {
+  _gainFrozen = false;
+  _rmsHistory = [];
 }
 
 export function resumeContext(): void {

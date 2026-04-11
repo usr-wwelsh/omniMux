@@ -108,7 +108,7 @@
       </div>
       <div class="slider-row">
         <input
-          type="range" min="0" max="10" step="0.5"
+          type="range" min="0" max="30" step="0.5"
           bind:value={$crossfadeDuration}
           class="slider"
         />

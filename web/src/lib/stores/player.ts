@@ -574,8 +574,8 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
       _doPushQueue(myIdNow).catch((e) => console.warn('[omniMux] Failed crossfade-start push:', e));
     }
   }
-  // Safety valve: if the crossfade doesn't complete within 30s, release the lock
-  // so the player doesn't get stuck (e.g. canplay never fires on a failed load).
+  // Safety valve: release the lock if the crossfade takes longer than expected
+  // (e.g. canplay never fires on a failed load). Give it the full fade duration + 15s buffer.
   if (_crossfadeSafetyTimer) clearTimeout(_crossfadeSafetyTimer);
   _crossfadeSafetyTimer = setTimeout(() => {
     if (_isCrossfading) {
@@ -619,7 +619,7 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
       }
     }
     _crossfadeSafetyTimer = null;
-  }, 30_000);
+  }, (durationSecs + 15) * 1000);
 
   if (!crossfadeAudio && typeof window !== 'undefined') {
     crossfadeAudio = new Audio();
@@ -628,14 +628,21 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
 
   const cf = crossfadeAudio;
 
-  // Pitch-match BPM with a small random slop for a live DJ feel
+  // Pitch-match BPM: lock the incoming track's tempo to the outgoing track.
+  // pitchSlop adds a tiny drift so the blend sounds like a human DJ.
   const currentBpm = get(currentTrack)?.bpm;
   const nextBpm = nextTrack.bpm;
-  let startPlaybackRate = (doBeatmatch && currentBpm && nextBpm && nextBpm > 0)
+  let rawRate = (doBeatmatch && currentBpm && nextBpm && nextBpm > 0)
     ? currentBpm / nextBpm
     : 1.0;
+  // Normalize half/double-time BPM tag errors: clamp to ±25% of 1.0.
+  // Outside that range the metadata is almost certainly wrong octave.
+  if (doBeatmatch && currentBpm && nextBpm) {
+    while (rawRate > 1.25) rawRate /= 2;
+    while (rawRate < 0.8)  rawRate *= 2;
+  }
+  let startPlaybackRate = rawRate;
   if (doBeatmatch && pitchSlop > 0) {
-    // ±pitchSlop random variance — real DJs are never perfectly on beat
     startPlaybackRate *= 1 + (Math.random() - 0.5) * pitchSlop * 2;
   }
   cf.playbackRate = startPlaybackRate;
@@ -644,6 +651,24 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
     // Seek cf to skip-intro offset if not already there
     if (seekOffset > 0 && cf.currentTime < seekOffset - 1) {
       cf.currentTime = seekOffset;
+    }
+
+    // Beat phase alignment: snap cf's position so its next beat coincides with
+    // primary's next beat. Both tracks now share the same real-time beat period
+    // (because cf's rate = currentBpm/nextBpm), so aligning phase once at fade
+    // start locks them together. pitchSlop then lets them drift naturally.
+    if (doBeatmatch && currentBpm && nextBpm && nextBpm > 0) {
+      const primary = getAudio();
+      const primaryBeatPeriod = 60 / currentBpm;       // seconds per beat on primary
+      const cfBeatPeriod      = 60 / nextBpm;          // seconds per beat in cf's own time
+      const primaryPhase      = primary.currentTime % primaryBeatPeriod; // how far into current beat
+      // Where in cf's beat cycle we need to be so the next beat lines up in real time:
+      // primaryPhase (real-time) → multiply by rate to get cf-time equivalent
+      const targetCfPhase = primaryPhase * rawRate;
+      const currentCfPhase    = cf.currentTime % cfBeatPeriod;
+      const aligned = cf.currentTime - currentCfPhase + targetCfPhase;
+      // Don't seek before the skip-intro offset; add one beat period if needed
+      cf.currentTime = aligned >= seekOffset ? aligned : aligned + cfBeatPeriod;
     }
 
     const startTime = performance.now();
@@ -657,7 +682,12 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
       const vol = get(volume);
       primary.volume = (1 - eased) * startVol;
       cf.volume = eased * vol;
-      cf.playbackRate = startPlaybackRate + (1.0 - startPlaybackRate) * eased;
+      // Hold the BPM lock for the first 65% of the fade, then gradually release
+      // to 1.0 over the tail — stays tight while both tracks are audible.
+      const RELEASE_POINT = 0.65;
+      const releaseT = Math.max(0, (t - RELEASE_POINT) / (1 - RELEASE_POINT));
+      const releaseEased = releaseT * releaseT * (3 - 2 * releaseT);
+      cf.playbackRate = startPlaybackRate + (1.0 - startPlaybackRate) * releaseEased;
 
       if (t < 1) {
         _crossfadeTimerId = setTimeout(() => fade(performance.now()), 16);
