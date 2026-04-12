@@ -306,9 +306,12 @@ function crossfadeCheck(ct: number, dur: number) {
 let _queueMonitorUnsub: (() => void) | null = null;
 let _filling = false;
 
-// Ring buffer of recently-played song IDs — never re-queue these
-const RECENT_HISTORY = 30;
-const _recentIds: string[] = [];
+// Ring buffer of recently-played song IDs — persisted across sessions
+const RECENT_HISTORY = 200;
+const _RECENT_IDS_KEY = 'omnimux-recent-ids';
+const _recentIds: string[] = browser
+  ? JSON.parse(localStorage.getItem(_RECENT_IDS_KEY) ?? '[]')
+  : [];
 
 // Mood playlist cache: { playlists, fetchedAt }
 let _moodPlaylistCache: Playlist[] | null = null;
@@ -388,7 +391,7 @@ async function fillQueue() {
     await _refreshIgnoredTracks();
 
     // Fetch a larger pool when personality filtering is active
-    const poolSize = personality !== 'none' ? 80 : 50;
+    const poolSize = personality !== 'none' ? 150 : 100;
     let pool: Song[] = (await subsonic.getRandomSongs(poolSize))
       .filter((s) => !excludeIds.has(s.id))
       .filter((s) => {
@@ -403,7 +406,7 @@ async function fillQueue() {
       try {
         const moodSongs = await getMoodPlaylistSongs(config.moodKeywords);
         if (moodSongs.length > 0) {
-          const shuffled = moodSongs.sort(() => Math.random() - 0.5).slice(0, 30);
+          const shuffled = moodSongs.sort(() => Math.random() - 0.5).slice(0, 60);
           const seen = new Set(pool.map((s) => s.id));
           pool = pool.concat(shuffled.filter((s) =>
             !seen.has(s.id) &&
@@ -766,6 +769,7 @@ currentTrack.subscribe((t) => {
     if (!_recentIds.includes(t.id)) {
       _recentIds.push(t.id);
       if (_recentIds.length > RECENT_HISTORY) _recentIds.shift();
+      if (browser) localStorage.setItem(_RECENT_IDS_KEY, JSON.stringify(_recentIds));
     }
     // Update enrichment for the now-playing track
     _currentEnrichment = _enrichCache.get(t.id) ?? null;
