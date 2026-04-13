@@ -2,6 +2,12 @@ import { writable, derived, get } from 'svelte/store';
 import { streamUrl, coverArtUrl, fetchItunesArtwork, type Song } from '../subsonic';
 import { api } from '../api';
 
+export interface DJMeta {
+  bpm: number;      // score contribution 0–3
+  energy: number;   // score contribution 0–2
+  harmonic: boolean;
+}
+
 export interface Track {
   id: string;
   title: string;
@@ -15,6 +21,7 @@ export interface Track {
   coverUrl?: string;
   hqCoverUrl?: string;
   bpm?: number;
+  djMeta?: DJMeta;
 }
 
 export const currentTrack = writable<Track | null>(null);
@@ -68,6 +75,8 @@ let _crossfadeBlackoutUntil = 0;
 const CROSSFADE_BLACKOUT_MS = 2000;
 // Last confirmed server queue version — used for optimistic locking
 let _knownQueueVersion = 0;
+// Suppress poll-driven queue overwrites while a batch fill is in progress
+export const suppressQueuePollApply = writable(false);
 
 // Shared push logic — handles 409 version conflict with one refetch-and-retry
 async function _doPushQueue(activeId: string, retryOnConflict = true): Promise<void> {
@@ -121,6 +130,7 @@ export function applyServerQueueState(
   queueVersion: number = 0,
 ) {
   if (get(soloMode)) return;
+  if (get(suppressQueuePollApply)) return;
   // Track the latest confirmed server version for optimistic locking
   if (queueVersion > 0) _knownQueueVersion = queueVersion;
   const myId = get(localDeviceId);

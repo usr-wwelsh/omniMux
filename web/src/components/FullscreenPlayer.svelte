@@ -828,6 +828,7 @@ void main() {
   {#if $autoDJToast}
     <div class="autodj-toast">{$autoDJToast}</div>
   {/if}
+
 </div>
 
 <style>
@@ -1456,4 +1457,5 @@ void main() {
     pointer-events: none;
     white-space: nowrap;
   }
+
 </style>

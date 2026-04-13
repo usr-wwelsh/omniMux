@@ -6,6 +6,7 @@ import {
   queue, queueIndex, currentTrack, loop, isPlaying,
   songToTrack, addToQueue, jumpToQueue, getAudio,
   startCrossfade, stopCrossfade, registerCrossfadeChecker, preloadCrossfadeTrack, warmUpCrossfadeAudio,
+  suppressQueuePollApply, type DJMeta,
 } from './player';
 import { visMode, type VisMode, startAutoGain, stopAutoGain, freezeAutoGain, thawAutoGain, getAnalyser, fillFrequencyData, overallFromBuf } from './visualizer';
 import { showFullscreenPlayer, artExpandRequested, autoDJToast } from './ui';
@@ -514,34 +515,36 @@ async function fillQueue() {
     })();
 
     // Score each candidate: weighted sum of BPM match, energy arc proximity, harmonic compatibility
-    function score(s: Song): number {
-      let sc = 0;
-      // BPM match
+    function scoreWithMeta(s: Song): { total: number; meta: DJMeta } {
+      let bpm = 0, energy = 0;
+      let harmonic = false;
       if (currentBpm && s.bpm) {
         const bpmDiff = Math.abs(s.bpm - currentBpm) / currentBpm;
-        sc += Math.max(0, 1 - bpmDiff / (tolerance * 2)) * 3;
+        bpm = Math.max(0, 1 - bpmDiff / (tolerance * 2)) * 3;
       }
       const enrich = _enrichCache.get(s.id);
-      // Energy arc
       if (enrich?.energy !== undefined && arcTarget !== null) {
         const eDiff = Math.abs(enrich.energy - arcTarget);
-        sc += Math.max(0, 1 - eDiff / 0.3) * 2;
+        energy = Math.max(0, 1 - eDiff / 0.3) * 2;
       }
-      // Harmonic mixing
       if (config.harmonicMix && _currentEnrichment?.key && enrich?.key) {
         const ca = toCamelot(_currentEnrichment.key);
         const cb = toCamelot(enrich.key);
-        if (ca && cb && isCompatibleKey(ca, cb)) sc += 4;
+        if (ca && cb && isCompatibleKey(ca, cb)) harmonic = true;
       }
-      // Small random factor so identical scores shuffle nicely
-      sc += Math.random() * 0.5;
-      return sc;
+      const total = bpm + energy + (harmonic ? 4 : 0) + Math.random() * 0.5;
+      return { total, meta: { bpm, energy, harmonic } };
     }
 
+    let candidateMeta: DJMeta | undefined;
     if (filtered.length > 0) {
       // Sort by score and pick from the top 5 (preserves some randomness)
-      const scored = filtered.slice().sort((a, b) => score(b) - score(a));
-      candidate = scored[Math.floor(Math.random() * Math.min(5, scored.length))];
+      const scored = filtered.slice()
+        .map((s) => ({ s, ...scoreWithMeta(s) }))
+        .sort((a, b) => b.total - a.total);
+      const pick = scored[Math.floor(Math.random() * Math.min(5, scored.length))];
+      candidate = pick.s;
+      candidateMeta = pick.meta;
     }
 
     // Last resort: personality/BPM filters wiped the pool (small library edge case).
@@ -556,6 +559,7 @@ async function fillQueue() {
 
     if (candidate) {
       const newTrack = await songToTrack(candidate);
+      if (candidateMeta) newTrack.djMeta = candidateMeta;
       // Re-read upcoming queue at append time to handle concurrent edits
       const currentQ = get(queue);
       const currentIdx = get(queueIndex);
@@ -575,6 +579,24 @@ async function fillQueue() {
     }
   } finally {
     _filling = false;
+  }
+}
+
+// ── Batch fill ────────────────────────────────────────────────────────────────
+
+let _batchFilling = false;
+
+export async function fillQueueBatch(n = 10): Promise<void> {
+  if (_batchFilling) return;
+  _batchFilling = true;
+  suppressQueuePollApply.set(true);
+  try {
+    for (let i = 0; i < n; i++) {
+      await fillQueue();
+    }
+  } finally {
+    _batchFilling = false;
+    suppressQueuePollApply.set(false);
   }
 }
 

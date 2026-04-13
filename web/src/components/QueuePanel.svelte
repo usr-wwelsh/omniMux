@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { queue, queueIndex, jumpToQueue, removeFromQueue, reorderQueue, clearQueue, formatTime } from '$lib/stores/player';
+  import { autoDJActive, fillQueueBatch } from '$lib/stores/autodj';
 
   // Mouse drag state
   let dragging = $state(-1);
@@ -93,7 +94,12 @@
   {:else}
     <div class="queue-header">
       <span class="queue-count">{$queue.length} tracks</span>
-      <button class="queue-clear-btn" onclick={clearQueue} title="Clear queue">Clear</button>
+      <div class="queue-header-actions">
+        {#if $autoDJActive}
+          <button class="queue-batch-btn" onclick={() => fillQueueBatch(10)} title="Request 10 more tracks from Auto DJ">+ 10 more</button>
+        {/if}
+        <button class="queue-clear-btn" onclick={clearQueue} title="Clear queue">Clear</button>
+      </div>
     </div>
     <div class="queue-list">
       {#each $queue as track, i}
@@ -127,6 +133,19 @@
             <div class="queue-text">
               <div class="queue-title" class:accent={i === $queueIndex}>{track.title}</div>
               <div class="queue-meta">{track.artist} · {formatTime(track.duration)}</div>
+              {#if track.djMeta}
+                <div class="dj-scores">
+                  {#if track.djMeta.bpm > 0.5}
+                    <span class="dj-tag" style="--score: {Math.min(track.djMeta.bpm / 3, 1)}">bpm</span>
+                  {/if}
+                  {#if track.djMeta.energy > 0.3}
+                    <span class="dj-tag" style="--score: {Math.min(track.djMeta.energy / 2, 1)}">energy</span>
+                  {/if}
+                  {#if track.djMeta.harmonic}
+                    <span class="dj-tag dj-tag--harmonic">key</span>
+                  {/if}
+                </div>
+              {/if}
             </div>
           </button>
 
@@ -159,6 +178,24 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 4px 8px;
+  }
+
+  .queue-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .queue-batch-btn {
+    font-size: 12px;
+    color: var(--accent);
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .queue-batch-btn:hover {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
 
   .queue-count {
@@ -262,6 +299,29 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .dj-scores {
+    display: flex;
+    gap: 4px;
+    margin-top: 3px;
+  }
+
+  .dj-tag {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--accent) calc(var(--score) * 18%), transparent);
+    color: color-mix(in srgb, var(--accent) calc(40% + var(--score) * 50%), var(--text-subdued));
+    border: 1px solid color-mix(in srgb, var(--accent) calc(var(--score) * 25%), transparent);
+    letter-spacing: 0.02em;
+  }
+
+  .dj-tag--harmonic {
+    --score: 1;
+    background: color-mix(in srgb, #7c6fcd 20%, transparent);
+    color: #9d90e0;
+    border-color: color-mix(in srgb, #7c6fcd 30%, transparent);
   }
 
   .queue-remove {
