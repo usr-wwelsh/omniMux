@@ -2,6 +2,7 @@
   import { page } from '$app/state';
   import { subsonic, type Artist, type Album } from '$lib/subsonic';
   import { api, type YouTubeAlbumResult } from '$lib/api';
+  import { isGuest } from '$lib/auth';
   import AlbumCard from '../../../../components/AlbumCard.svelte';
 
   let artist = $state<Artist | null>(null);
@@ -26,8 +27,10 @@
       const data = await subsonic.getArtist(id);
       artist = data.artist;
       albums = data.albums;
-      // Search YouTube for this artist's albums in the background
-      api.searchYouTubeAlbums(data.artist.name, 20).then((r) => (ytAlbums = r)).catch(() => {});
+      // Search YouTube for this artist's albums in the background (non-guests only)
+      if (!$isGuest) {
+        api.searchYouTubeAlbums(data.artist.name, 20).then((r) => (ytAlbums = r)).catch(() => {});
+      }
     } catch {
       artist = null;
       albums = [];
@@ -68,6 +71,7 @@
       </section>
     {/if}
 
+    {#if !$isGuest}
     <section class="section">
       <h2 class="section-title">YouTube Albums</h2>
       {#if ytAlbums.length === 0}
@@ -112,6 +116,7 @@
         {/if}
       {/if}
     </section>
+    {/if}
   {/if}
 </div>
 
