@@ -5,6 +5,8 @@
 
 A self-hosted music server that lets you search YouTube, cache tracks to your library, and stream everything through a Spotify-like PWA. Built on top of [Navidrome](https://www.navidrome.org/) with a FastAPI middleware layer and a SvelteKit frontend.
 
+**[Live demo → omnimux.wwel.sh](https://omnimux.wwel.sh)** (guest access, read-only library)
+
 ![omniMux demo](demo.png)
 
 ## Features
