@@ -1,8 +1,9 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { subsonic, type Artist, type Album } from '$lib/subsonic';
+  import { subsonic, type Artist, type Album, type Song } from '$lib/subsonic';
   import { api, type YouTubeResult } from '$lib/api';
   import { isGuest } from '$lib/auth';
+  import { playQueue } from '$lib/stores/player';
   import AlbumCard from '../../../../components/AlbumCard.svelte';
 
   let artist = $state<Artist | null>(null);
@@ -11,6 +12,13 @@
   let ytLoading = $state(false);
   let ytError = $state(false);
   let loading = $state(true);
+
+  let playingAll = $state(false);
+  let showAllAlbums = $state(false);
+  let ytAlbumsVisible = $state(5);
+  const YT_ALBUM_STEP = 10;
+  const ALBUM_PREVIEW = 8;
+  const visibleAlbums = $derived(showAllAlbums ? albums : albums.slice(0, ALBUM_PREVIEW));
 
   let expandedAlbums = $state<Set<string>>(new Set());
   let downloadingIds = $state<Set<string>>(new Set());
@@ -36,13 +44,19 @@
     ytError = false;
     ytTracks = [];
     expandedAlbums = new Set();
+    showAllAlbums = false;
+    ytAlbumsVisible = 5;
     try {
       const data = await subsonic.getArtist(id);
       artist = data.artist;
-      albums = data.albums;
+      const extra = await subsonic.searchArtistAlbums(data.artist.name);
+      const seen = new Set(data.albums.map((a) => a.id));
+      const merged = [...data.albums, ...extra.filter((a) => !seen.has(a.id))];
+      merged.sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
+      albums = merged;
       if (!$isGuest) {
         ytLoading = true;
-        api.getArtistTopicTracks(data.artist.name, 100)
+        api.getArtistTopicTracks(data.artist.name)
           .then((r) => { ytTracks = r; ytLoading = false; })
           .catch(() => { ytError = true; ytLoading = false; });
       }
@@ -89,6 +103,18 @@
     return 'idle';
   }
 
+  async function playAllTracks() {
+    if (playingAll || albums.length === 0) return;
+    playingAll = true;
+    try {
+      const results = await Promise.all(albums.map((a) => subsonic.getAlbum(a.id)));
+      const songs: Song[] = results.flatMap((r) => r.songs);
+      if (songs.length > 0) playQueue(songs, 0);
+    } finally {
+      playingAll = false;
+    }
+  }
+
   function formatDuration(seconds: number): string {
     if (!seconds) return '';
     const m = Math.floor(seconds / 60);
@@ -105,13 +131,28 @@
 
     {#if albums.length > 0}
       <section class="section">
-        <h2 class="section-title">In Your Library</h2>
+        <div class="section-header">
+          <h2 class="section-title">In Your Library</h2>
+          <button class="play-all-btn" onclick={playAllTracks} disabled={playingAll}>
+            {#if playingAll}
+              <svg class="spin" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+            {:else}
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            {/if}
+            Play all
+          </button>
+        </div>
         <p class="muted">{artist.albumCount} album{artist.albumCount !== 1 ? 's' : ''}</p>
         <div class="album-grid">
-          {#each albums as album}
+          {#each visibleAlbums as album}
             <AlbumCard {album} />
           {/each}
         </div>
+        {#if albums.length > ALBUM_PREVIEW && !showAllAlbums}
+          <button class="show-more-btn" onclick={() => showAllAlbums = true}>
+            Show all {albums.length} albums
+          </button>
+        {/if}
       </section>
     {/if}
 
@@ -125,7 +166,7 @@
       {:else}
         <p class="muted">{ytTracks.length} tracks · {albumGroups.size} album{albumGroups.size !== 1 ? 's' : ''}</p>
         <div class="yt-album-list">
-          {#each albumGroups as [albumName, tracks]}
+          {#each [...albumGroups].slice(0, ytAlbumsVisible) as [albumName, tracks]}
             {@const isExpanded = expandedAlbums.has(albumName)}
             {@const dlState = albumDlState(albumName, tracks)}
             {@const thumb = tracks[0]?.thumbnail_url}
@@ -188,6 +229,11 @@
             </div>
           {/each}
         </div>
+        {#if ytAlbumsVisible < albumGroups.size}
+          <button class="show-more-btn" onclick={() => ytAlbumsVisible += YT_ALBUM_STEP}>
+            Show more ({albumGroups.size - ytAlbumsVisible} remaining)
+          </button>
+        {/if}
       {/if}
     </section>
     {/if}
@@ -201,7 +247,46 @@
 
   .section { margin-bottom: 36px; }
 
-  .section-title { font-size: 20px; font-weight: 700; margin-bottom: 12px; }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+
+  .section-title { font-size: 20px; font-weight: 700; margin: 0; }
+
+  .play-all-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: opacity 0.15s;
+  }
+
+  .play-all-btn:disabled { opacity: 0.6; cursor: default; }
+  .play-all-btn:not(:disabled):hover { opacity: 0.85; }
+
+  .show-more-btn {
+    margin-top: 12px;
+    background: none;
+    border: 1px solid var(--text-secondary);
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding: 6px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .show-more-btn:hover { border-color: var(--text-primary); color: var(--text-primary); }
 
   .muted { color: var(--text-secondary); font-size: 14px; margin-bottom: 16px; }
 

@@ -157,12 +157,14 @@ def get_artist_topic_albums(artist: str, limit: int = 200, quick: bool = False) 
     return results[:limit]
 
 
-def get_artist_topic_tracks(artist: str, limit: int = 100) -> list[SearchResult]:
+def get_artist_topic_tracks(artist: str, limit: int = 2000) -> list[SearchResult]:
     artist_data = _find_artist(artist)
     if not artist_data:
         return []
 
-    album_list = _get_all_artist_albums(artist_data, "albums")
+    album_list = []
+    for section_key in ("albums", "singles"):
+        album_list.extend(_get_all_artist_albums(artist_data, section_key))
     if not album_list:
         return []
 
@@ -203,8 +205,6 @@ def get_artist_topic_tracks(artist: str, limit: int = 100) -> list[SearchResult]
     all_tracks: list[SearchResult] = []
     for i in range(len(album_list)):
         all_tracks.extend(album_results.get(i, []))
-        if len(all_tracks) >= limit:
-            break
 
     return all_tracks[:limit]
 

@@ -116,7 +116,7 @@ async def search_yt_album_tracks(
 @router.get("/youtube/artist-tracks", response_model=list[YouTubeResult])
 async def search_yt_artist_tracks(
     artist: str = Query(..., min_length=1),
-    limit: Optional[int] = Query(100, ge=1, le=200),
+    limit: Optional[int] = Query(2000, ge=1, le=2000),
     user: UserContext = Depends(require_non_guest),
 ):
     key = f"artist-tracks:{artist}:{limit}"

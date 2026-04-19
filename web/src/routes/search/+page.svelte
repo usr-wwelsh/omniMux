@@ -17,6 +17,7 @@
   let errorIds = $state<Set<string>>(new Set());
   let expandedAlbums = $state<Set<string>>(new Set());
   let downloadingAlbumIds = $state<Set<string>>(new Set());
+  let ytAlbumsVisible = $state(5);
 
   const albumGroups = $derived.by(() => {
     const hasAlbums = youtubeResults.some(r => r.album);
@@ -96,6 +97,7 @@
   async function doSearch() {
     searching = true;
     expandedAlbums = new Set();
+    ytAlbumsVisible = 5;
     try {
       if ($isGuest) {
         const libraryResult = await subsonic.search(query);
@@ -263,7 +265,7 @@
       {#if albumGroups}
         <p class="yt-meta">{youtubeResults.length} tracks · {albumGroups.size} album{albumGroups.size !== 1 ? 's' : ''}</p>
         <div class="yt-album-list">
-          {#each albumGroups as [albumName, tracks]}
+          {#each [...albumGroups].slice(0, ytAlbumsVisible) as [albumName, tracks]}
             {@const isExpanded = expandedAlbums.has(albumName)}
             {@const dlState = albumDlState(albumName, tracks)}
             {@const thumb = thumbUrl(tracks[0]?.thumbnail_url ?? '')}
@@ -329,6 +331,11 @@
             </div>
           {/each}
         </div>
+        {#if ytAlbumsVisible < albumGroups.size}
+          <button class="show-more-btn" onclick={() => ytAlbumsVisible += 10}>
+            Show more ({albumGroups.size - ytAlbumsVisible} remaining)
+          </button>
+        {/if}
       {:else}
         <div class="yt-results">
           {#each youtubeResults as result}
@@ -684,6 +691,20 @@
   }
 
   .dl-all-btn:hover { border-color: var(--text-primary); color: var(--text-primary); }
+
+  .show-more-btn {
+    margin-top: 12px;
+    background: none;
+    border: 1px solid var(--text-secondary);
+    color: var(--text-secondary);
+    font-size: 13px;
+    padding: 6px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .show-more-btn:hover { border-color: var(--text-primary); color: var(--text-primary); }
 
   .dl-done { font-size: 12px; color: var(--accent); }
 

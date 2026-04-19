@@ -226,6 +226,18 @@ export const subsonic = {
     };
   },
 
+  async searchArtistAlbums(artistName: string): Promise<Album[]> {
+    const data = await subsonicGet('search3.view', { query: artistName, artistCount: '0', albumCount: '500', songCount: '0' });
+    const sr = data.searchResult3 || {};
+    const name = artistName.toLowerCase();
+    return (sr.album || [])
+      .filter((al: any) => al.artist?.toLowerCase() === name)
+      .map((al: any) => ({
+        id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
+        coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
+      }));
+  },
+
   async search(query: string): Promise<{ artists: Artist[]; albums: Album[]; songs: Song[] }> {
     const data = await subsonicGet('search3.view', { query, artistCount: '15', albumCount: '10', songCount: '10' });
     const sr = data.searchResult3 || {};

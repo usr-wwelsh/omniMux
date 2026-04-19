@@ -191,7 +191,7 @@ export const api = {
     return request(`/api/search/youtube/artist-albums?artist=${encodeURIComponent(artist)}&limit=${limit}&quick=${quick}`);
   },
 
-  async getArtistTopicTracks(artist: string, limit = 100): Promise<YouTubeResult[]> {
+  async getArtistTopicTracks(artist: string, limit = 2000): Promise<YouTubeResult[]> {
     return request(`/api/search/youtube/artist-tracks?artist=${encodeURIComponent(artist)}&limit=${limit}`);
   },
 
