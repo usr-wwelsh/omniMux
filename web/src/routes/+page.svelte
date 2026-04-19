@@ -86,7 +86,12 @@
   {:else}
     {#if randomAlbums.length > 0}
       <section class="section">
-        <h2 class="section-title">Albums</h2>
+        <div class="section-header">
+          <h2 class="section-title">Albums</h2>
+          <button class="refresh-btn" onclick={loadHome} disabled={loading} title="Refresh">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+          </button>
+        </div>
         <div class="album-grid">
           {#each randomAlbums as album}
             <AlbumCard {album} />
@@ -195,10 +200,41 @@
     margin-bottom: 40px;
   }
 
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
   .section-title {
     font-size: 22px;
     font-weight: 700;
-    margin-bottom: 16px;
+  }
+
+  .refresh-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--text-subdued);
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+    flex-shrink: 0;
+  }
+
+  .refresh-btn:hover:not(:disabled) {
+    color: var(--text-primary);
+    background: var(--bg-elevated);
+  }
+
+  .refresh-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
   }
 
   .album-grid {
