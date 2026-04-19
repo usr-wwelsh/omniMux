@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { subsonic, type Artist, type Album } from '$lib/subsonic';
-  import { api, type YouTubeAlbumResult, type YouTubeResult } from '$lib/api';
+  import { api, thumbUrl, type YouTubeAlbumResult, type YouTubeResult } from '$lib/api';
   import AlbumCard from '../../../components/AlbumCard.svelte';
 
   let name = $derived(decodeURIComponent(page.params.name));
@@ -31,18 +31,16 @@
     ytAlbums = [];
     showAllYt = false;
 
-    // Search Navidrome for a matching artist in parallel with YouTube
-    const [libraryResult, yt] = await Promise.allSettled([
+    // Phase 1: quick initial albums + library search in parallel
+    const [libraryResult, quickYt] = await Promise.allSettled([
       subsonic.search(artistName),
-      api.searchYouTubeAlbums(artistName, 20),
+      api.getArtistYouTubeAlbums(artistName, 200, true),
     ]);
 
     if (libraryResult.status === 'fulfilled') {
-      // Pick the best matching artist from library results
       const match = libraryResult.value.artists.find(
         (a) => a.name.toLowerCase() === artistName.toLowerCase()
       ) ?? libraryResult.value.artists[0] ?? null;
-
       if (match) {
         libraryArtist = match;
         try {
@@ -52,9 +50,16 @@
       }
     }
 
-    if (yt.status === 'fulfilled') {
-      ytAlbums = yt.value;
+    if (quickYt.status === 'fulfilled' && quickYt.value.length > 0) {
+      ytAlbums = quickYt.value;
+      ytLoading = false;
     }
+
+    // Phase 2: full album list (calls get_artist_albums for complete discography)
+    try {
+      const fullYt = await api.getArtistYouTubeAlbums(artistName, 200, false);
+      if (fullYt.length > 0) ytAlbums = fullYt;
+    } catch { /* non-fatal */ }
 
     ytLoading = false;
   }
@@ -130,7 +135,7 @@
           <div class="yt-album-card" class:expanded={expandedAlbum === album.playlist_id}>
             <button class="yt-album-header" onclick={() => togglePreview(album)}>
               {#if album.thumbnail_url}
-                <img src={album.thumbnail_url} alt={album.title} class="yt-album-art" />
+                <img src={thumbUrl(album.thumbnail_url)} alt={album.title} class="yt-album-art" loading="lazy" />
               {:else}
                 <div class="yt-album-art placeholder">
                   <svg viewBox="0 0 24 24" width="40" height="40" fill="var(--text-subdued)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>

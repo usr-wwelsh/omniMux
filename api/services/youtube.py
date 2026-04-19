@@ -32,7 +32,14 @@ class AlbumResult:
 def _best_thumb(thumbnails: list) -> str:
     if not thumbnails:
         return ""
-    return thumbnails[-1].get("url", "")
+    sized = [(t.get("width") or 0, t.get("url", "")) for t in thumbnails if t.get("url")]
+    if not sized:
+        return thumbnails[-1].get("url", "")
+    # Prefer smallest thumbnail >= 200px; fall back to largest available
+    candidates = [(w, u) for w, u in sized if w >= 200]
+    if candidates:
+        return min(candidates, key=lambda x: x[0])[1]
+    return max(sized, key=lambda x: x[0])[1]
 
 
 def _artist_name(r: dict, fallback: str = "Unknown") -> str:
@@ -97,28 +104,57 @@ def _find_artist(artist: str) -> dict | None:
     return None
 
 
-def get_artist_topic_albums(artist: str, limit: int = 20) -> list[AlbumResult]:
+def _get_all_artist_albums(artist_data: dict, section_key: str) -> list[dict]:
+    section = artist_data.get(section_key, {})
+    browse_id = section.get("browseId")
+    params = section.get("params")
+    if browse_id and params:
+        try:
+            return _ytm.get_artist_albums(browse_id, params) or []
+        except Exception:
+            pass
+    return section.get("results") or []
+
+
+def _build_album_results(artist: str, album_list: list[dict]) -> list[AlbumResult]:
+    results = []
+    seen: set[str] = set()
+    for album in album_list:
+        playlist_id = album.get("playlistId") or album.get("audioPlaylistId")
+        browse_id = album.get("browseId")
+        if not playlist_id and not browse_id:
+            continue
+        pid = playlist_id or browse_id
+        if pid in seen:
+            continue
+        seen.add(pid)
+        url = (
+            f"https://www.youtube.com/playlist?list={playlist_id}"
+            if playlist_id
+            else f"https://music.youtube.com/browse/{browse_id}"
+        )
+        results.append(AlbumResult(
+            playlist_id=pid,
+            title=album.get("title", "Unknown"),
+            artist=artist,
+            track_count=0,
+            thumbnail_url=_best_thumb(album.get("thumbnails") or []),
+            url=url,
+        ))
+    return results
+
+
+def get_artist_topic_albums(artist: str, limit: int = 200, quick: bool = False) -> list[AlbumResult]:
     artist_data = _find_artist(artist)
     if not artist_data:
         return []
 
     results = []
     for section_key in ("albums", "singles"):
-        for album in (artist_data.get(section_key, {}).get("results") or []):
-            playlist_id = album.get("playlistId")
-            if not playlist_id:
-                continue
-            results.append(AlbumResult(
-                playlist_id=playlist_id,
-                title=album.get("title", "Unknown"),
-                artist=artist,
-                track_count=0,
-                thumbnail_url=_best_thumb(album.get("thumbnails") or []),
-                url=f"https://www.youtube.com/playlist?list={playlist_id}",
-            ))
-            if len(results) >= limit:
-                return results
-    return results
+        section = artist_data.get(section_key, {})
+        album_list = section.get("results") or [] if quick else _get_all_artist_albums(artist_data, section_key)
+        results.extend(_build_album_results(artist, album_list))
+    return results[:limit]
 
 
 def get_artist_topic_tracks(artist: str, limit: int = 100) -> list[SearchResult]:
@@ -126,7 +162,7 @@ def get_artist_topic_tracks(artist: str, limit: int = 100) -> list[SearchResult]
     if not artist_data:
         return []
 
-    album_list = (artist_data.get("albums", {}).get("results") or [])
+    album_list = _get_all_artist_albums(artist_data, "albums")
     if not album_list:
         return []
 

@@ -24,6 +24,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
+export function thumbUrl(url: string): string {
+  if (!url) return '';
+  return `/api/search/thumb?url=${encodeURIComponent(url)}`;
+}
+
 export interface YouTubeResult {
   youtube_id: string;
   title: string;
@@ -174,7 +179,7 @@ export const api = {
     });
   },
 
-  async searchYouTube(query: string, limit = 20): Promise<YouTubeResult[]> {
+  async searchYouTube(query: string, limit = 50): Promise<YouTubeResult[]> {
     return request(`/api/search/youtube?q=${encodeURIComponent(query)}&limit=${limit}`);
   },
 
@@ -182,8 +187,8 @@ export const api = {
     return request(`/api/search/youtube/albums?q=${encodeURIComponent(query)}&limit=${limit}`);
   },
 
-  async getArtistYouTubeAlbums(artist: string, limit = 20): Promise<YouTubeAlbumResult[]> {
-    return request(`/api/search/youtube/artist-albums?artist=${encodeURIComponent(artist)}&limit=${limit}`);
+  async getArtistYouTubeAlbums(artist: string, limit = 200, quick = false): Promise<YouTubeAlbumResult[]> {
+    return request(`/api/search/youtube/artist-albums?artist=${encodeURIComponent(artist)}&limit=${limit}&quick=${quick}`);
   },
 
   async getArtistTopicTracks(artist: string, limit = 100): Promise<YouTubeResult[]> {

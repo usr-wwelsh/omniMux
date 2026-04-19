@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, type YouTubeResult } from '$lib/api';
+  import { api, thumbUrl, type YouTubeResult } from '$lib/api';
   import { subsonic, type Artist, type Album, type Song } from '$lib/subsonic';
   import { playSong, formatTime } from '$lib/stores/player';
   import { isGuest } from '$lib/auth';
@@ -266,11 +266,11 @@
           {#each albumGroups as [albumName, tracks]}
             {@const isExpanded = expandedAlbums.has(albumName)}
             {@const dlState = albumDlState(albumName, tracks)}
-            {@const thumb = tracks[0]?.thumbnail_url}
+            {@const thumb = thumbUrl(tracks[0]?.thumbnail_url ?? '')}
             <div class="yt-album" class:expanded={isExpanded}>
               <button class="yt-album-header" onclick={() => toggleAlbum(albumName)}>
                 {#if thumb}
-                  <img src={thumb} alt="" class="yt-album-thumb" />
+                  <img src={thumb} alt="" class="yt-album-thumb" loading="lazy" />
                 {:else}
                   <div class="yt-album-thumb placeholder"></div>
                 {/if}
@@ -303,7 +303,7 @@
                     <div class="yt-track-row">
                       <span class="track-num">{i + 1}</span>
                       {#if track.thumbnail_url}
-                        <img src={track.thumbnail_url} alt="" class="track-thumb" />
+                        <img src={thumbUrl(track.thumbnail_url)} alt="" class="track-thumb" loading="lazy" />
                       {:else}
                         <div class="track-thumb placeholder"></div>
                       {/if}
@@ -333,7 +333,7 @@
         <div class="yt-results">
           {#each youtubeResults as result}
             <div class="yt-row">
-              <img src={result.thumbnail_url} alt="" class="yt-thumb" />
+              <img src={thumbUrl(result.thumbnail_url)} alt="" class="yt-thumb" loading="lazy" />
               <div class="yt-info">
                 <div class="yt-title">{result.title}</div>
                 <div class="yt-artist">{result.artist} &middot; {formatDuration(result.duration)}</div>

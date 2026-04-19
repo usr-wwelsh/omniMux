@@ -1,7 +1,9 @@
 import asyncio
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 
 from routers.auth import require_non_guest, UserContext
@@ -9,6 +11,30 @@ from services import cache
 from services.youtube import search_youtube, search_youtube_albums, get_youtube_album_tracks, get_artist_youtube_albums, get_playlist_tracks, get_artist_topic_tracks, get_artist_topic_albums
 
 router = APIRouter()
+
+_THUMB_ALLOWED = ("yt3.googleusercontent.com", "lh3.googleusercontent.com", "i.ytimg.com")
+_THUMB_TTL = 86400  # 24 hours
+
+
+@router.get("/thumb")
+async def proxy_thumb(url: str = Query(...)):
+    from urllib.parse import urlparse
+    host = urlparse(url).netloc
+    if not any(host == d or host.endswith("." + d) for d in _THUMB_ALLOWED):
+        raise HTTPException(status_code=400, detail="Disallowed image host")
+    key = f"thumb:{url}"
+    cached = cache.get(key, _THUMB_TTL)
+    if cached is not None:
+        return Response(content=cached["data"], media_type=cached["ct"], headers={"Cache-Control": "public, max-age=86400"})
+    async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+        try:
+            r = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            r.raise_for_status()
+        except Exception:
+            raise HTTPException(status_code=502, detail="Failed to fetch thumbnail")
+    ct = r.headers.get("content-type", "image/jpeg")
+    cache.set(key, {"data": r.content, "ct": ct}, _THUMB_TTL)
+    return Response(content=r.content, media_type=ct, headers={"Cache-Control": "public, max-age=86400"})
 
 
 class YouTubeResult(BaseModel):
@@ -117,14 +143,15 @@ async def search_yt_artist_tracks(
 @router.get("/youtube/artist-albums", response_model=list[YouTubeAlbumResult])
 async def search_yt_artist_albums(
     artist: str = Query(..., min_length=1),
-    limit: Optional[int] = Query(20, ge=1, le=40),
+    limit: Optional[int] = Query(200, ge=1, le=500),
+    quick: bool = Query(False),
     user: UserContext = Depends(require_non_guest),
 ):
-    key = f"artist-topic-albums:{artist}:{limit}"
+    key = f"artist-topic-albums:{artist}:{limit}:{quick}"
     cached = cache.get(key, _ALBUM_TTL)
     if cached is not None:
         return cached
-    results = await asyncio.to_thread(get_artist_topic_albums, artist, limit)
+    results = await asyncio.to_thread(get_artist_topic_albums, artist, limit, quick)
     response = [
         YouTubeAlbumResult(
             playlist_id=r.playlist_id,
@@ -169,7 +196,7 @@ async def search_yt_albums(
 @router.get("/youtube", response_model=list[YouTubeResult])
 async def search_yt(
     q: str = Query(..., min_length=1),
-    limit: Optional[int] = Query(20, ge=1, le=50),
+    limit: Optional[int] = Query(50, ge=1, le=200),
     user: UserContext = Depends(require_non_guest),
 ):
     key = f"tracks:{q}:{limit}"
