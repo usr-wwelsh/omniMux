@@ -15,6 +15,20 @@
   let downloadingIds = $state<Map<string, number>>(new Map());
   let searching = $state(false);
   let errorIds = $state<Set<string>>(new Set());
+  let expandedAlbums = $state<Set<string>>(new Set());
+  let downloadingAlbumIds = $state<Set<string>>(new Set());
+
+  const albumGroups = $derived.by(() => {
+    const hasAlbums = youtubeResults.some(r => r.album);
+    if (!hasAlbums) return null;
+    const groups = new Map<string, YouTubeResult[]>();
+    for (const t of youtubeResults) {
+      const key = t.album || 'Singles & Other';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(t);
+    }
+    return groups;
+  });
   let searchTimeout: ReturnType<typeof setTimeout>;
   let inputFocused = $state(false);
 
@@ -58,8 +72,30 @@
     searchTimeout = setTimeout(() => doSearch(), 300);
   }
 
+  function toggleAlbum(albumName: string) {
+    const next = new Set(expandedAlbums);
+    if (next.has(albumName)) next.delete(albumName);
+    else next.add(albumName);
+    expandedAlbums = next;
+  }
+
+  async function downloadAlbumTracks(albumName: string, tracks: YouTubeResult[]) {
+    if (downloadingAlbumIds.has(albumName)) return;
+    downloadingAlbumIds = new Set([...downloadingAlbumIds, albumName]);
+    await Promise.allSettled(tracks.map((t) => cacheTrack(t)));
+    downloadingAlbumIds.delete(albumName);
+    downloadingAlbumIds = new Set(downloadingAlbumIds);
+  }
+
+  function albumDlState(albumName: string, tracks: YouTubeResult[]): 'idle' | 'loading' | 'done' {
+    if (downloadingAlbumIds.has(albumName)) return 'loading';
+    if (tracks.every(t => cachedIds.has(t.youtube_id))) return 'done';
+    return 'idle';
+  }
+
   async function doSearch() {
     searching = true;
+    expandedAlbums = new Set();
     try {
       if ($isGuest) {
         const libraryResult = await subsonic.search(query);
@@ -90,7 +126,7 @@
     errorIds.delete(result.youtube_id);
     errorIds = new Set(errorIds);
     try {
-      const resp = await api.startDownload(result.url, result.youtube_id, result.title, result.artist);
+      const resp = await api.startDownload(result.url, result.youtube_id, result.title, result.artist, result.album || undefined);
       if (resp.already_cached) {
         cachedIds = new Set([...cachedIds, result.youtube_id]);
       } else {
@@ -224,40 +260,111 @@
   {#if youtubeResults.length > 0 && !$isGuest}
     <section class="section">
       <h2 class="section-title">From YouTube</h2>
-      <div class="yt-results">
-        {#each youtubeResults as result}
-          <div class="yt-row">
-            <img src={result.thumbnail_url} alt="" class="yt-thumb" />
-            <div class="yt-info">
-              <div class="yt-title">{result.title}</div>
-              <div class="yt-artist">{result.artist} &middot; {formatDuration(result.duration)}</div>
-            </div>
-            <div class="yt-actions">
-              {#if cachedIds.has(result.youtube_id)}
-                <span class="cached-badge">
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="var(--accent)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-                  Cached
-                </span>
-              {:else if downloadingIds.has(result.youtube_id)}
-                <span class="downloading-badge">
-                  <svg class="spin" viewBox="0 0 24 24" width="16" height="16" fill="var(--text-secondary)"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
-                  Caching...
-                </span>
-              {:else if errorIds.has(result.youtube_id)}
-                <button class="cache-btn cache-btn--error" onclick={() => cacheTrack(result)}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-                  Retry
-                </button>
-              {:else}
-                <button class="cache-btn" onclick={() => cacheTrack(result)}>
-                  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
-                  Cache
-                </button>
+      {#if albumGroups}
+        <p class="yt-meta">{youtubeResults.length} tracks · {albumGroups.size} album{albumGroups.size !== 1 ? 's' : ''}</p>
+        <div class="yt-album-list">
+          {#each albumGroups as [albumName, tracks]}
+            {@const isExpanded = expandedAlbums.has(albumName)}
+            {@const dlState = albumDlState(albumName, tracks)}
+            {@const thumb = tracks[0]?.thumbnail_url}
+            <div class="yt-album" class:expanded={isExpanded}>
+              <button class="yt-album-header" onclick={() => toggleAlbum(albumName)}>
+                {#if thumb}
+                  <img src={thumb} alt="" class="yt-album-thumb" />
+                {:else}
+                  <div class="yt-album-thumb placeholder"></div>
+                {/if}
+                <div class="yt-album-meta">
+                  <span class="yt-album-title">{albumName}</span>
+                  <span class="yt-album-sub">{tracks.length} track{tracks.length !== 1 ? 's' : ''}</span>
+                </div>
+                <svg class="chevron" class:rotated={isExpanded} viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                  <path d="M7 10l5 5 5-5z"/>
+                </svg>
+              </button>
+              {#if isExpanded}
+                <div class="yt-album-tracks">
+                  <div class="track-list-header">
+                    {#if dlState === 'done'}
+                      <span class="dl-done">All queued</span>
+                    {:else if dlState === 'loading'}
+                      <span class="dl-loading">
+                        <svg class="spin" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                        Queueing...
+                      </span>
+                    {:else}
+                      <button class="dl-all-btn" onclick={(e) => { e.stopPropagation(); downloadAlbumTracks(albumName, tracks); }}>
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                        Queue all
+                      </button>
+                    {/if}
+                  </div>
+                  {#each tracks as track, i}
+                    <div class="yt-track-row">
+                      <span class="track-num">{i + 1}</span>
+                      {#if track.thumbnail_url}
+                        <img src={track.thumbnail_url} alt="" class="track-thumb" />
+                      {:else}
+                        <div class="track-thumb placeholder"></div>
+                      {/if}
+                      <span class="track-title">{track.title}</span>
+                      <span class="track-duration">{formatDuration(track.duration)}</span>
+                      {#if cachedIds.has(track.youtube_id)}
+                        <span class="track-done">✓</span>
+                      {:else if downloadingIds.has(track.youtube_id)}
+                        <svg class="spin track-action" viewBox="0 0 24 24" width="16" height="16" fill="var(--text-secondary)"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                      {:else if errorIds.has(track.youtube_id)}
+                        <button class="track-dl-btn track-dl-btn--error" onclick={() => cacheTrack(track)} title="Retry">
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                        </button>
+                      {:else}
+                        <button class="track-dl-btn" onclick={() => cacheTrack(track)} title="Queue download">
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                        </button>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
               {/if}
             </div>
-          </div>
-        {/each}
-      </div>
+          {/each}
+        </div>
+      {:else}
+        <div class="yt-results">
+          {#each youtubeResults as result}
+            <div class="yt-row">
+              <img src={result.thumbnail_url} alt="" class="yt-thumb" />
+              <div class="yt-info">
+                <div class="yt-title">{result.title}</div>
+                <div class="yt-artist">{result.artist} &middot; {formatDuration(result.duration)}</div>
+              </div>
+              <div class="yt-actions">
+                {#if cachedIds.has(result.youtube_id)}
+                  <span class="cached-badge">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="var(--accent)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                    Cached
+                  </span>
+                {:else if downloadingIds.has(result.youtube_id)}
+                  <span class="downloading-badge">
+                    <svg class="spin" viewBox="0 0 24 24" width="16" height="16" fill="var(--text-secondary)"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                    Caching...
+                  </span>
+                {:else if errorIds.has(result.youtube_id)}
+                  <button class="cache-btn cache-btn--error" onclick={() => cacheTrack(result)}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                    Retry
+                  </button>
+                {:else}
+                  <button class="cache-btn" onclick={() => cacheTrack(result)}>
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                    Cache
+                  </button>
+                {/if}
+              </div>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </section>
   {/if}
 
@@ -477,6 +584,188 @@
     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 12px;
   }
+
+  .yt-meta {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 12px;
+  }
+
+  .yt-album-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .yt-album {
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid transparent;
+    transition: border-color 0.15s;
+  }
+
+  .yt-album.expanded { border-color: var(--bg-elevated); }
+
+  .yt-album-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    cursor: pointer;
+    border-radius: 8px;
+    text-align: left;
+    transition: background 0.1s;
+  }
+
+  .yt-album-header:hover { background: var(--bg-secondary); }
+
+  .yt-album-thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 4px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .yt-album-thumb.placeholder { background: var(--bg-elevated); }
+
+  .yt-album-meta {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .yt-album-title {
+    font-size: 14px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .yt-album-sub { font-size: 12px; color: var(--text-secondary); }
+
+  .chevron {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    transition: transform 0.2s;
+  }
+
+  .chevron.rotated { transform: rotate(180deg); }
+
+  .yt-album-tracks { padding: 0 10px 10px 10px; }
+
+  .track-list-header {
+    display: flex;
+    align-items: center;
+    padding: 6px 0 8px 0;
+    border-bottom: 1px solid var(--bg-elevated);
+    margin-bottom: 4px;
+  }
+
+  .dl-all-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 1px solid var(--text-secondary);
+    color: var(--text-secondary);
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .dl-all-btn:hover { border-color: var(--text-primary); color: var(--text-primary); }
+
+  .dl-done { font-size: 12px; color: var(--accent); }
+
+  .dl-loading {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  .yt-track-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 5px 4px;
+    border-radius: 6px;
+    transition: background 0.1s;
+  }
+
+  .yt-track-row:hover { background: var(--bg-secondary); }
+
+  .track-num {
+    width: 20px;
+    text-align: right;
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .track-thumb {
+    width: 32px;
+    height: 32px;
+    border-radius: 3px;
+    object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  .track-thumb.placeholder { background: var(--bg-elevated); }
+
+  .track-title {
+    flex: 1;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .track-duration {
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+    width: 38px;
+    text-align: right;
+  }
+
+  .track-dl-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    align-items: center;
+    border-radius: 4px;
+    flex-shrink: 0;
+    transition: color 0.15s;
+  }
+
+  .track-dl-btn:hover { color: var(--text-primary); }
+
+  .track-dl-btn--error { color: #e05252; }
+
+  .track-done {
+    font-size: 13px;
+    color: var(--accent);
+    flex-shrink: 0;
+    width: 24px;
+    text-align: center;
+  }
+
+  .track-action { flex-shrink: 0; }
 
   .yt-results {
     display: flex;

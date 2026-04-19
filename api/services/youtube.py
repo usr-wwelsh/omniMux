@@ -1,7 +1,11 @@
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 
 import yt_dlp
+from ytmusicapi import YTMusic
+
+_ytm = YTMusic()
 
 
 @dataclass
@@ -12,6 +16,7 @@ class SearchResult:
     duration: int  # seconds
     thumbnail_url: str
     url: str
+    album: str = ""
 
 
 @dataclass
@@ -24,75 +29,188 @@ class AlbumResult:
     url: str
 
 
+def _best_thumb(thumbnails: list) -> str:
+    if not thumbnails:
+        return ""
+    return thumbnails[-1].get("url", "")
+
+
+def _artist_name(r: dict, fallback: str = "Unknown") -> str:
+    artists = r.get("artists") or []
+    return artists[0]["name"] if artists else fallback
+
+
 def search_youtube(query: str, limit: int = 20) -> list[SearchResult]:
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "extract_flat": True,
-        "skip_download": True,
-    }
+    try:
+        raw = _ytm.search(query, filter="songs", limit=limit)
+    except Exception:
+        raw = []
 
     results = []
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
-            entries = info.get("entries", []) if info else []
-
-            for entry in entries:
-                if not entry:
-                    continue
-                youtube_id = entry.get("id", "")
-                title = entry.get("title", "Unknown")
-                artist = entry.get("channel", entry.get("uploader", "Unknown"))
-                duration = entry.get("duration") or 0
-                thumbnail = entry.get("thumbnail", entry.get("thumbnails", [{}])[0].get("url", "") if entry.get("thumbnails") else "")
-
-                results.append(SearchResult(
-                    youtube_id=youtube_id,
-                    title=title,
-                    artist=artist,
-                    duration=int(duration),
-                    thumbnail_url=thumbnail,
-                    url=f"https://www.youtube.com/watch?v={youtube_id}",
-                ))
-    except Exception:
-        pass
-
-    results.sort(key=lambda r: 0 if "- topic" in r.artist.lower() else 1)
+    for r in (raw or [])[:limit]:
+        vid = r.get("videoId")
+        if not vid:
+            continue
+        results.append(SearchResult(
+            youtube_id=vid,
+            title=r.get("title", "Unknown"),
+            artist=_artist_name(r),
+            duration=r.get("duration_seconds") or 0,
+            thumbnail_url=_best_thumb(r.get("thumbnails") or []),
+            url=f"https://www.youtube.com/watch?v={vid}",
+            album=(r.get("album") or {}).get("name", ""),
+        ))
     return results
 
 
-def _title_score(result: "AlbumResult", artist: str, album: str) -> tuple[int, int]:
-    """Return (topic_bonus, title_similarity) — higher is better."""
-    topic = 1 if "- topic" in result.artist.lower() else 0
-    t = result.title.lower()
-    a = album.lower()
-    ar = artist.lower()
-    if t == a:
-        sim = 3
-    elif a in t and ar in t:
-        sim = 2
-    elif a in t:
-        sim = 1
-    else:
-        sim = 0
-    return (topic, sim)
+def search_youtube_albums(query: str, limit: int = 10) -> list[AlbumResult]:
+    try:
+        raw = _ytm.search(query, filter="albums", limit=limit)
+    except Exception:
+        raw = []
+
+    results = []
+    for r in (raw or [])[:limit]:
+        playlist_id = r.get("playlistId") or r.get("browseId")
+        if not playlist_id:
+            continue
+        results.append(AlbumResult(
+            playlist_id=playlist_id,
+            title=r.get("title", "Unknown Album"),
+            artist=_artist_name(r, ""),
+            track_count=r.get("trackCount") or 0,
+            thumbnail_url=_best_thumb(r.get("thumbnails") or []),
+            url=f"https://www.youtube.com/playlist?list={playlist_id}",
+        ))
+    return results
+
+
+def _find_artist(artist: str) -> dict | None:
+    try:
+        results = _ytm.search(artist, filter="artists", limit=5)
+        for r in (results or []):
+            name = r.get("artist") or r.get("title", "")
+            if artist.lower() in name.lower() or name.lower() in artist.lower():
+                return _ytm.get_artist(r["browseId"])
+    except Exception:
+        pass
+    return None
+
+
+def get_artist_topic_albums(artist: str, limit: int = 20) -> list[AlbumResult]:
+    artist_data = _find_artist(artist)
+    if not artist_data:
+        return []
+
+    results = []
+    for section_key in ("albums", "singles"):
+        for album in (artist_data.get(section_key, {}).get("results") or []):
+            playlist_id = album.get("playlistId")
+            if not playlist_id:
+                continue
+            results.append(AlbumResult(
+                playlist_id=playlist_id,
+                title=album.get("title", "Unknown"),
+                artist=artist,
+                track_count=0,
+                thumbnail_url=_best_thumb(album.get("thumbnails") or []),
+                url=f"https://www.youtube.com/playlist?list={playlist_id}",
+            ))
+            if len(results) >= limit:
+                return results
+    return results
+
+
+def get_artist_topic_tracks(artist: str, limit: int = 100) -> list[SearchResult]:
+    artist_data = _find_artist(artist)
+    if not artist_data:
+        return []
+
+    album_list = (artist_data.get("albums", {}).get("results") or [])
+    if not album_list:
+        return []
+
+    def fetch_album(album: dict) -> list[SearchResult]:
+        try:
+            browse_id = album.get("browseId")
+            if not browse_id:
+                return []
+            album_data = _ytm.get_album(browse_id)
+            album_thumb = _best_thumb(
+                album_data.get("thumbnails") or album.get("thumbnails") or []
+            )
+            tracks = []
+            for track in (album_data.get("tracks") or []):
+                vid = track.get("videoId")
+                if not vid:
+                    continue
+                thumb = _best_thumb(track.get("thumbnails") or []) or album_thumb
+                tracks.append(SearchResult(
+                    youtube_id=vid,
+                    title=track.get("title", "Unknown"),
+                    artist=_artist_name(track, artist),
+                    duration=track.get("duration_seconds") or 0,
+                    thumbnail_url=thumb,
+                    url=f"https://www.youtube.com/watch?v={vid}",
+                    album=album.get("title", ""),
+                ))
+            return tracks
+        except Exception:
+            return []
+
+    album_results: dict[int, list[SearchResult]] = {}
+    with ThreadPoolExecutor(max_workers=min(8, len(album_list))) as ex:
+        future_to_idx = {ex.submit(fetch_album, a): i for i, a in enumerate(album_list)}
+        for future in as_completed(future_to_idx):
+            album_results[future_to_idx[future]] = future.result()
+
+    all_tracks: list[SearchResult] = []
+    for i in range(len(album_list)):
+        all_tracks.extend(album_results.get(i, []))
+        if len(all_tracks) >= limit:
+            break
+
+    return all_tracks[:limit]
 
 
 def get_youtube_album_tracks(artist: str, album: str) -> list[SearchResult]:
-    """Find the YouTube album playlist for artist/album and return its tracks."""
-    album_results = search_youtube_albums(f"{artist} {album}", limit=10)
-    if not album_results:
-        return []
+    try:
+        raw = _ytm.search(f"{artist} {album}", filter="albums", limit=5)
+        for r in (raw or []):
+            browse_id = r.get("browseId")
+            if not browse_id:
+                continue
+            r_title = r.get("title", "").lower()
+            if album.lower() not in r_title and r_title not in album.lower():
+                continue
+            album_data = _ytm.get_album(browse_id)
+            album_thumb = _best_thumb(album_data.get("thumbnails") or [])
+            tracks = []
+            for track in (album_data.get("tracks") or []):
+                vid = track.get("videoId")
+                if not vid:
+                    continue
+                thumb = _best_thumb(track.get("thumbnails") or []) or album_thumb
+                tracks.append(SearchResult(
+                    youtube_id=vid,
+                    title=track.get("title", "Unknown"),
+                    artist=_artist_name(track, artist),
+                    duration=track.get("duration_seconds") or 0,
+                    thumbnail_url=thumb,
+                    url=f"https://www.youtube.com/watch?v={vid}",
+                ))
+            return tracks
+    except Exception:
+        pass
+    return []
 
-    # Pick the best match: prefer Topic channel + closest title match, then more tracks
-    best = max(album_results, key=lambda r: (*_title_score(r, artist, album), r.track_count))
-    # Bail out if nothing remotely matches — avoids returning tracks from a random playlist
-    if _title_score(best, artist, album) == (0, 0):
-        return []
 
-    playlist_url = best.url
+def get_artist_youtube_albums(artist: str, limit: int = 20) -> list[AlbumResult]:
+    return search_youtube_albums(f"{artist} full album", limit)
 
+
+def get_playlist_tracks(playlist_url: str, fallback_artist: str = "") -> list[SearchResult]:
+    """Fetch tracks from an arbitrary playlist URL via yt-dlp."""
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -113,7 +231,7 @@ def get_youtube_album_tracks(artist: str, album: str) -> list[SearchResult]:
                         continue
                     youtube_id = entry["id"]
                     title = entry.get("title", "Unknown")
-                    artist_name = entry.get("channel", entry.get("uploader", artist))
+                    artist_name = entry.get("channel", entry.get("uploader", fallback_artist))
                     duration = entry.get("duration") or 0
                     thumbnails = entry.get("thumbnails") or []
                     thumb = thumbnails[-1].get("url", "") if thumbnails else entry.get("thumbnail", "")
@@ -127,48 +245,6 @@ def get_youtube_album_tracks(artist: str, album: str) -> list[SearchResult]:
                     ))
                 except Exception:
                     continue
-    except Exception:
-        pass
-    return results
-
-
-def search_youtube_albums(query: str, limit: int = 10) -> list[AlbumResult]:
-    """Search YouTube for album playlists matching the query."""
-    # sp=EgIQAw%3D%3D is YouTube's search filter for Type: Playlist
-    url = f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}&sp=EgIQAw%3D%3D"
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "extract_flat": True,
-        "skip_download": True,
-        "ignoreerrors": True,
-    }
-    results = []
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if not info:
-                return []
-            for entry in (info.get("entries") or []):
-                if not entry or not entry.get("id"):
-                    continue
-                playlist_id = entry["id"]
-                # Skip YouTube auto-generated mixes (RD...) — they're not real album
-                # playlists and only return a handful of tracks when extracted
-                if playlist_id.startswith("RD"):
-                    continue
-                thumbnails = entry.get("thumbnails") or []
-                thumb = thumbnails[-1].get("url", "") if thumbnails else entry.get("thumbnail", "")
-                results.append(AlbumResult(
-                    playlist_id=playlist_id,
-                    title=entry.get("title", "Unknown Album"),
-                    artist=entry.get("channel", entry.get("uploader", "")),
-                    track_count=entry.get("playlist_count") or 0,
-                    thumbnail_url=thumb,
-                    url=f"https://www.youtube.com/playlist?list={playlist_id}",
-                ))
-                if len(results) >= limit:
-                    break
     except Exception:
         pass
     return results

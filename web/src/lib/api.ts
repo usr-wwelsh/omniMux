@@ -31,6 +31,7 @@ export interface YouTubeResult {
   duration: number;
   thumbnail_url: string;
   url: string;
+  album: string;
 }
 
 export interface DownloadStatus {
@@ -181,8 +182,20 @@ export const api = {
     return request(`/api/search/youtube/albums?q=${encodeURIComponent(query)}&limit=${limit}`);
   },
 
+  async getArtistYouTubeAlbums(artist: string, limit = 20): Promise<YouTubeAlbumResult[]> {
+    return request(`/api/search/youtube/artist-albums?artist=${encodeURIComponent(artist)}&limit=${limit}`);
+  },
+
+  async getArtistTopicTracks(artist: string, limit = 100): Promise<YouTubeResult[]> {
+    return request(`/api/search/youtube/artist-tracks?artist=${encodeURIComponent(artist)}&limit=${limit}`);
+  },
+
   async getYouTubeAlbumTracks(artist: string, album: string): Promise<YouTubeResult[]> {
     return request(`/api/search/youtube/album-tracks?artist=${encodeURIComponent(artist)}&album=${encodeURIComponent(album)}`);
+  },
+
+  async getPlaylistTracks(playlistUrl: string, artist = ''): Promise<YouTubeResult[]> {
+    return request(`/api/search/youtube/playlist-tracks?url=${encodeURIComponent(playlistUrl)}&artist=${encodeURIComponent(artist)}`);
   },
 
   async startDownload(youtube_url: string, youtube_id: string, title: string, artist: string, album?: string): Promise<DownloadResponse> {
