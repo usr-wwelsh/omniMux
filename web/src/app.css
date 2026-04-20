@@ -77,19 +77,28 @@
   --mini-player-height: 56px;
 }
 
-/* init-launcher: Solaris CDE blue-gray with CDE pink accent */
+/* init-launcher: soft cartoon turtle — soft shell cream bg, gentle sage sidebar */
 [data-theme="init-launcher"] {
-  --bg-primary: #6E7E8E;
-  --bg-secondary: #7A8B9A;
-  --bg-elevated: #5A6B7A;
-  --bg-highlight: #4A5A68;
-  --text-primary: #FFFFFF;
-  --text-secondary: #98AABB;
-  --text-subdued: #4A5A68;
-  --accent: #C05870;
-  --accent-hover: #D06880;
-  --danger: #C05870;
-  --border: #3A4A58;
+  /* Backgrounds: Softer, warmer cream so the bright green logo doesn't clash */
+  --bg-primary: #C8DEC0;
+  --bg-secondary: #A0C496; /* A slightly brighter, friendlier sage */
+  --bg-elevated: #B1D1A8;
+  --bg-highlight: #C5E2BE;
+  
+  /* Text: Using very dark greens instead of harsh blacks to keep the soft feel */
+  --text-primary: #1C2D19;
+  --text-secondary: #3B5736;
+  --text-subdued: #688C61;
+  
+  /* Accents: Matched closer to the blue headphones in the logo, but kept soft */
+  --accent: #449CD6; 
+  --accent-hover: #2E81B8;
+  
+  /* UI elements */
+  --danger: #E06C5C; /* A softer, cartoony coral-red instead of harsh crimson */
+  --border: #86AF7B;
+  
+  /* Layout */
   --sidebar-width: 240px;
   --now-playing-width: 340px;
   --player-height: 72px;

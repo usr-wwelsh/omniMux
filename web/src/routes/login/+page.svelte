@@ -52,7 +52,10 @@
 
 <div class="login-page">
   <div class="login-card">
-    <h1 class="login-logo">omniMux</h1>
+    <div class="login-logo">
+      <img src="/logo.png" alt="omniMux" class="login-logo-img" />
+      <h1 class="login-logo-text">omniMux</h1>
+    </div>
     <p class="login-subtitle">Sign in with your Navidrome account</p>
 
     <form onsubmit={handleLogin}>
@@ -109,9 +112,22 @@
   }
 
   .login-logo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .login-logo-img {
+    width: 128px;
+    height: 128px;
+    object-fit: contain;
+  }
+
+  .login-logo-text {
     font-size: 36px;
     font-weight: 800;
-    margin-bottom: 8px;
     letter-spacing: -1px;
   }
 

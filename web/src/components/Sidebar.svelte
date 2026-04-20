@@ -11,6 +11,7 @@
 
 <nav class="sidebar">
   <div class="sidebar-logo">
+    <img src="/logo.png" alt="omniMux" class="logo-img" />
     <span class="logo-text">omniMux</span>
   </div>
 
@@ -68,6 +69,16 @@
 
   .sidebar-logo {
     padding: 8px 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-img {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    flex-shrink: 0;
   }
 
   .logo-text {

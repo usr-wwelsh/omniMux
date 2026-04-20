@@ -836,7 +836,7 @@ void main() {
     position: fixed;
     inset: 0;
     z-index: 500;
-    background: var(--bg-primary);
+    background: var(--bg-secondary);
     display: flex;
     flex-direction: column;
     overflow-y: auto;

@@ -15,7 +15,7 @@
     { value: 'win98', label: 'Win98', description: 'Silver & navy — classic Windows 98 vibes' },
     { value: 'bubblegum', label: 'Bubblegum', description: 'Flat light pink mono — sweet and simple' },
     { value: 'amber', label: 'Amber', description: 'Warm amber glow — old IBM monitor' },
-    { value: 'init-launcher', label: 'Init Launcher', description: 'Solaris CDE blue-gray with pink accent' },
+    { value: 'init-launcher', label: 'Turtle', description: 'Soft cartoon greens with headphone blue accent' },
   ];
 
   const visCycleOptions: { value: 'track' | '15' | '30' | '60'; label: string }[] = [
@@ -209,19 +209,19 @@
   <section class="settings-section">
     <h2 class="section-title">About</h2>
 
-    <div class="setting-row about-row">
-      <div class="setting-info">
-        <span class="setting-name">omniMux</span>
-        <span class="setting-desc">Multi-device music player with VJ visualizers</span>
+    <div class="about-hero">
+      <img src="/logo.png" alt="omniMux" class="about-logo" />
+      <div class="about-hero-text">
+        <span class="about-name">omniMux</span>
+        <span class="about-tagline">Multi-device music player with VJ visualizers</span>
+        <span class="about-version">v0.1.0-alpha</span>
       </div>
-      <a
-        class="github-link"
-        href="https://git.wwel.sh/omnimux"
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
-        View on GitHub
+    </div>
+
+    <div class="about-links">
+      <a class="about-link" href="https://git.wwel.sh/omnimux" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        Contribute on GitHub
       </a>
     </div>
   </section>
@@ -338,8 +338,8 @@
   }
 
   [data-theme="init-launcher"] {
-    background: #6E7E8E;
-    border: 1px solid #C05870;
+    background: linear-gradient(135deg, #EAE4B8 0%, #8AAE84 100%);
+    border: 1px solid #5BAAD0;
   }
 
   .theme-btn-label {
@@ -446,13 +446,56 @@
     font-size: 12px;
   }
 
-  .about-row {
-    flex-direction: row;
+  .about-hero {
+    display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 20px;
+    padding: 24px;
+    border-radius: 12px;
+    background: var(--bg-elevated);
+    border: 2px solid var(--border);
+    margin-bottom: 12px;
   }
 
-  .github-link {
+  .about-logo {
+    width: 80px;
+    height: 80px;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+
+  .about-hero-text {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .about-name {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.4px;
+  }
+
+  .about-tagline {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .about-version {
+    font-size: 11px;
+    color: var(--text-subdued);
+    font-family: monospace;
+    margin-top: 2px;
+  }
+
+  .about-links {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .about-link {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -468,7 +511,7 @@
     white-space: nowrap;
   }
 
-  .github-link:hover {
+  .about-link:hover {
     border-color: var(--accent);
   }
 
