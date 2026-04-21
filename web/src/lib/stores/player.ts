@@ -325,17 +325,30 @@ export function playTrack(track: Track) {
 }
 
 export async function playQueue(songs: Song[], startIndex = 0) {
-  const tracks = await Promise.all(songs.map(songToTrack));
+  const EAGER = Math.max(startIndex + 1, 15);
+  const eagerSongs = songs.slice(0, EAGER);
+  const restSongs = songs.slice(EAGER);
+
+  const tracks = await Promise.all(eagerSongs.map(songToTrack));
   queue.set(tracks);
   queueIndex.set(startIndex);
   if (isThisDeviceActive()) {
-    // Play here and claim ownership
     if (tracks[startIndex]) playTrack(tracks[startIndex]);
     schedulePushQueue(get(localDeviceId));
   } else {
-    // Send to the active device — update queue/index but don't steal audio
     if (tracks[startIndex]) currentTrack.set(tracks[startIndex]);
     schedulePushQueue(activeOrMe());
+  }
+
+  // Resolve remaining tracks in small batches without blocking playback
+  if (restSongs.length > 0) {
+    (async () => {
+      const BATCH = 20;
+      for (let i = 0; i < restSongs.length; i += BATCH) {
+        const batch = await Promise.all(restSongs.slice(i, i + BATCH).map(songToTrack));
+        queue.update((q) => [...q, ...batch]);
+      }
+    })();
   }
 }
 
