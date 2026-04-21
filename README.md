@@ -1,4 +1,4 @@
-<div align="right"><img src="web/static/logo.svg" width="120" alt="omniMux logo" /></div>
+<div align="center"><img src="banner.svg" width="860" alt="omniMux banner" /></div>
 
 # omniMux
 
@@ -11,7 +11,7 @@ A self-hosted music server that lets you search YouTube, cache tracks to your li
 
 **[Live demo → omnimux.wwel.sh](https://omnimux.wwel.sh)** (guest access, read-only library)
 
-![omniMux demo](demo.png)
+![omniMux demo](demo.gif)
 
 ## Table of contents
 

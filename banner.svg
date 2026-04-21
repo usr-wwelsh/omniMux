@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="160" viewBox="0 0 860 160">
+  <defs>
+    <filter id="shadow">
+      <feDropShadow dx="2" dy="3" stdDeviation="3" flood-color="#1a3d0088"/>
+    </filter>
+    <filter id="subtleglow">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#111111" flood-opacity="0.25"/>
+    </filter>
+    <clipPath id="bg-clip">
+      <rect width="860" height="160" rx="14"/>
+    </clipPath>
+  </defs>
+
+  <!-- Background -->
+  <rect width="860" height="160" rx="14" fill="#8AC926"/>
+
+  <!-- Subtle darker bottom stripe -->
+  <rect y="140" width="860" height="20" rx="0" fill="#6fa31e" clip-path="url(#bg-clip)"/>
+
+  <!-- Dark left accent bar -->
+  <rect x="0" y="0" width="7" height="160" fill="#111111" clip-path="url(#bg-clip)"/>
+
+  <!-- Turtle logo, left side, bobbing -->
+  <g transform="translate(-1, 14) scale(0.5618)">
+    <g>
+      <animateTransform attributeName="transform" type="translate"
+        values="0,0; 0,-14; 0,0"
+        dur="2.8s" repeatCount="indefinite"
+        calcMode="spline"
+        keyTimes="0;0.5;1"
+        keySplines="0.4 0 0.6 1; 0.4 0 0.6 1"/>
+      <path d="M 169.6951197246113 148.91640058967317 Q 161.36054572293713 169.83280117934632 135.93897845157082 187.2145137482371 Q 110.5174111802045 204.5962263171279 91.17935530968688 179.82041556621806 Q 71.84129943916926 155.04460481530822 64.46432547758766 124.44743657649829 Q 57.08735151600605 93.85026833768835 82.21229550999843 65.66039976358114 Q 107.3372395039908 37.47053118947393 141.60951711155732 52.714329857792535 Q 175.88179471912386 67.95812852611114 176.95574422270465 97.97906426305556 Q 178.02969372628542 128 169.6951197246113 148.91640058967317" fill="#5d9a1a" stroke="#111111" stroke-width="10" stroke-linejoin="round"/>
+      <circle cx="95" cy="110" r="14" fill="#111111"/>
+      <circle cx="90.8" cy="105.8" r="4.2" fill="#fff"/>
+      <circle cx="160" cy="110" r="6" fill="#111111"/>
+      <circle cx="158.2" cy="108.2" r="1.8" fill="#fff"/>
+      <path d="M 62 110 Q 62 50 128 50 Q 194 50 194 110" fill="none" stroke="#111111" stroke-width="10" stroke-linecap="round"/>
+      <rect x="50" y="102" width="24" height="36" rx="6" fill="#1982C4" stroke="#111111" stroke-width="10"/>
+      <rect x="182" y="102" width="24" height="36" rx="6" fill="#1982C4" stroke="#111111" stroke-width="10"/>
+      <path d="M 100 145 Q 128 175 156 145" fill="none" stroke="#111111" stroke-width="10" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <!-- omniMux title -->
+  <text
+    x="128" y="98"
+    font-family="'Courier New', Courier, monospace"
+    font-size="72"
+    font-weight="900"
+    fill="#111111"
+    filter="url(#shadow)">omniMux</text>
+
+  <!-- Tagline -->
+  <text
+    x="130" y="128"
+    font-family="'Courier New', Courier, monospace"
+    font-size="14"
+    fill="#1a3d00"
+    letter-spacing="2">your music · your server · no cloud</text>
+</svg>
