@@ -24,6 +24,8 @@
   let downloadingIds = $state<Set<string>>(new Set());
   let downloadedIds = $state<Set<string>>(new Set());
   let downloadingAlbums = $state<Set<string>>(new Set());
+  let previewKey = $state<string | null>(null);
+  let previewYtId = $state<string | null>(null);
 
   $effect(() => { loadArtist(page.params.id); });
 
@@ -121,6 +123,17 @@
     const s = seconds % 60;
     return `${m}:${s.toString().padStart(2, '0')}`;
   }
+
+  function startPreview(track: YouTubeResult) {
+    const key = `${track.artist}|${track.title}`;
+    if (previewKey === key) {
+      previewKey = null;
+      previewYtId = null;
+      return;
+    }
+    previewKey = key;
+    previewYtId = track.youtube_id;
+  }
 </script>
 
 <div class="artist-page">
@@ -204,7 +217,9 @@
                     {/if}
                   </div>
                   {#each tracks as track, i}
-                    <div class="yt-track-row">
+                    {@const key = `${track.artist}|${track.title}`}
+                    {@const isPreviewing = previewKey === key}
+                    <div class="yt-track-row" class:yt-track-row--active={isPreviewing}>
                       <span class="track-num">{i + 1}</span>
                       {#if track.thumbnail_url}
                         <img src={track.thumbnail_url} alt="" class="track-thumb" />
@@ -213,6 +228,13 @@
                       {/if}
                       <span class="track-title">{track.title}</span>
                       <span class="track-duration">{formatDuration(track.duration)}</span>
+                      <button class="preview-btn-small" onclick={() => startPreview(track)} title={isPreviewing ? 'Stop' : 'Preview'} class:preview-btn-small--active={isPreviewing}>
+                        {#if isPreviewing}
+                          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
+                        {:else}
+                          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                        {/if}
+                      </button>
                       {#if downloadedIds.has(track.youtube_id)}
                         <span class="track-done" title="Queued">✓</span>
                       {:else if downloadingIds.has(track.youtube_id)}
@@ -221,6 +243,16 @@
                         <button class="track-dl-btn" onclick={() => downloadTrack(track)} title="Queue download">
                           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
                         </button>
+                      {/if}
+                      {#if isPreviewing && previewYtId}
+                        <div class="preview-player-inline">
+                          <iframe
+                            src="https://www.youtube.com/embed/{previewYtId}?autoplay=1"
+                            allow="autoplay; encrypted-media"
+                            frameborder="0"
+                            title="Preview"
+                          ></iframe>
+                        </div>
                       {/if}
                     </div>
                   {/each}
@@ -478,4 +510,45 @@
   }
 
   .spin { animation: spin 1s linear infinite; }
+
+  .preview-btn-small {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-subdued);
+    border-radius: 4px;
+    transition: color 0.12s, background 0.12s;
+  }
+
+  .preview-btn-small:hover:not(:disabled) {
+    color: var(--accent, #1db954);
+    background: color-mix(in srgb, var(--accent, #1db954) 12%, transparent);
+  }
+
+  .preview-btn-small--active {
+    color: var(--accent, #1db954);
+  }
+
+  .yt-track-row--active {
+    background: color-mix(in srgb, var(--accent, #1db954) 8%, transparent);
+  }
+
+  .preview-player-inline {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  .preview-player-inline iframe {
+    width: 100%;
+    height: 120px;
+    border: none;
+    display: block;
+  }
 </style>

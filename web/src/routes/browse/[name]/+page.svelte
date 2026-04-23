@@ -16,6 +16,8 @@
   let expandedAlbum = $state<string | null>(null);
   let previewTracks = $state<Map<string, YouTubeResult[]>>(new Map());
   let loadingPreview = $state<Set<string>>(new Set());
+  let previewKey = $state<string | null>(null);
+  let previewYtId = $state<string | null>(null);
 
   const YT_PREVIEW = 8;
   const visibleYtAlbums = $derived(showAllYt ? ytAlbums : ytAlbums.slice(0, YT_PREVIEW));
@@ -96,6 +98,17 @@
       importingAlbums = new Set(importingAlbums);
     }
   }
+
+  function startPreview(track: YouTubeResult) {
+    const key = `${track.artist}|${track.title}`;
+    if (previewKey === key) {
+      previewKey = null;
+      previewYtId = null;
+      return;
+    }
+    previewKey = key;
+    previewYtId = track.youtube_id;
+  }
 </script>
 
 <div class="browse-page">
@@ -156,10 +169,29 @@
                   <p class="preview-loading">Loading tracks...</p>
                 {:else}
                   {#each (previewTracks.get(album.playlist_id) ?? []) as track, i}
-                    <div class="yt-track-row">
+                    {@const key = `${track.artist}|${track.title}`}
+                    {@const isPreviewing = previewKey === key}
+                    <div class="yt-track-row" class:yt-track-row--active={isPreviewing}>
                       <span class="yt-track-num">{i + 1}</span>
                       <span class="yt-track-title">{track.title}</span>
                       <span class="yt-track-dur">{Math.floor(track.duration / 60)}:{String(track.duration % 60).padStart(2, '0')}</span>
+                      <button class="preview-btn-small" onclick={() => startPreview(track)} title={isPreviewing ? 'Stop' : 'Preview'} class:preview-btn-small--active={isPreviewing}>
+                        {#if isPreviewing}
+                          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
+                        {:else}
+                          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                        {/if}
+                      </button>
+                      {#if isPreviewing && previewYtId}
+                        <div class="preview-player-inline">
+                          <iframe
+                            src="https://www.youtube.com/embed/{previewYtId}?autoplay=1"
+                            allow="autoplay; encrypted-media"
+                            frameborder="0"
+                            title="Preview"
+                          ></iframe>
+                        </div>
+                      {/if}
                     </div>
                   {/each}
                   {#if (previewTracks.get(album.playlist_id) ?? []).length === 0 && !loadingPreview.has(album.playlist_id)}
@@ -445,5 +477,48 @@
 
   .spin {
     animation: spin 1s linear infinite;
+  }
+
+  .preview-btn-small {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-subdued);
+    border-radius: 4px;
+    transition: color 0.12s, background 0.12s;
+  }
+
+  .preview-btn-small:hover:not(:disabled) {
+    color: var(--accent, #1db954);
+    background: color-mix(in srgb, var(--accent, #1db954) 12%, transparent);
+  }
+
+  .preview-btn-small--active {
+    color: var(--accent, #1db954);
+  }
+
+  .yt-track-row--active {
+    background: color-mix(in srgb, var(--accent, #1db954) 8%, transparent);
+    padding: 2px 4px;
+    border-radius: 4px;
+  }
+
+  .preview-player-inline {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  .preview-player-inline iframe {
+    width: 100%;
+    height: 120px;
+    border: none;
+    display: block;
   }
 </style>

@@ -19,6 +19,9 @@
   let expandedAlbums = $state<Set<string>>(new Set());
   let downloadingAlbumIds = $state<Set<string>>(new Set());
   let ytAlbumsVisible = $state(5);
+  let previewKey = $state<string | null>(null);
+  let previewYtId = $state<string | null>(null);
+  let previewLoading = $state<string | null>(null);
 
   const albumGroups = $derived.by(() => {
     const hasAlbums = youtubeResults.some(r => r.album);
@@ -182,6 +185,23 @@
   const hasLibraryResults = $derived(
     libraryArtists.length > 0 || libraryAlbums.length > 0 || librarySongs.length > 0
   );
+
+  async function startPreview(track: YouTubeResult) {
+    const key = `${track.artist}|${track.title}`;
+    if (previewKey === key) {
+      previewKey = null;
+      previewYtId = null;
+      return;
+    }
+    previewLoading = key;
+    previewKey = null;
+    previewYtId = null;
+    try {
+      previewKey = key;
+      previewYtId = track.youtube_id;
+    } catch {}
+    previewLoading = null;
+  }
 </script>
 
 <div class="search-page">
@@ -306,7 +326,9 @@
                     {/if}
                   </div>
                   {#each tracks as track, i}
-                    <div class="yt-track-row">
+                    {@const key = `${track.artist}|${track.title}`}
+                    {@const isPreviewing = previewKey === key}
+                    <div class="yt-track-row" class:yt-track-row--active={isPreviewing}>
                       <span class="track-num">{i + 1}</span>
                       {#if track.thumbnail_url}
                         <img src={thumbUrl(track.thumbnail_url)} alt="" class="track-thumb" loading="lazy" />
@@ -315,6 +337,13 @@
                       {/if}
                       <span class="track-title">{track.title}</span>
                       <span class="track-duration">{formatDuration(track.duration)}</span>
+                      <button class="preview-btn-small" onclick={() => startPreview(track)} title={isPreviewing ? 'Stop' : 'Preview'} class:preview-btn-small--active={isPreviewing}>
+                        {#if isPreviewing}
+                          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
+                        {:else}
+                          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                        {/if}
+                      </button>
                       {#if cachedIds.has(track.youtube_id)}
                         <span class="track-done">✓</span>
                       {:else if downloadingIds.has(track.youtube_id)}
@@ -327,6 +356,16 @@
                         <button class="track-dl-btn" onclick={() => cacheTrack(track)} title="Queue download">
                           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
                         </button>
+                      {/if}
+                      {#if isPreviewing && previewYtId}
+                        <div class="preview-player-inline">
+                          <iframe
+                            src="https://www.youtube.com/embed/{previewYtId}?autoplay=1"
+                            allow="autoplay; encrypted-media"
+                            frameborder="0"
+                            title="Preview"
+                          ></iframe>
+                        </div>
                       {/if}
                     </div>
                   {/each}
@@ -343,12 +382,21 @@
       {:else}
         <div class="yt-results">
           {#each youtubeResults as result}
-            <div class="yt-row">
+            {@const key = `${result.artist}|${result.title}`}
+            {@const isPreviewing = previewKey === key}
+            <div class="yt-row" class:yt-row--active={isPreviewing}>
               <img src={thumbUrl(result.thumbnail_url)} alt="" class="yt-thumb" loading="lazy" />
               <div class="yt-info">
                 <div class="yt-title">{result.title}</div>
                 <div class="yt-artist">{result.artist} &middot; {formatDuration(result.duration)}</div>
               </div>
+              <button class="preview-btn" onclick={() => startPreview(result)} title={isPreviewing ? 'Stop' : 'Preview'} class:preview-btn--active={isPreviewing}>
+                {#if isPreviewing}
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M6 6h12v12H6z"/></svg>
+                {:else}
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                {/if}
+              </button>
               <div class="yt-actions">
                 {#if cachedIds.has(result.youtube_id)}
                   <span class="cached-badge">
@@ -372,6 +420,16 @@
                   </button>
                 {/if}
               </div>
+              {#if isPreviewing && previewYtId}
+                <div class="preview-player">
+                  <iframe
+                    src="https://www.youtube.com/embed/{previewYtId}?autoplay=1"
+                    allow="autoplay; encrypted-media"
+                    frameborder="0"
+                    title="Preview"
+                  ></iframe>
+                </div>
+              {/if}
             </div>
           {/each}
         </div>
@@ -888,5 +946,86 @@
 
   .spin {
     animation: spin 1s linear infinite;
+  }
+
+  .preview-btn {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-subdued);
+    border-radius: 50%;
+    transition: color 0.12s, background 0.12s;
+  }
+
+  .preview-btn:hover:not(:disabled) {
+    color: var(--accent, #1db954);
+    background: color-mix(in srgb, var(--accent, #1db954) 12%, transparent);
+  }
+
+  .preview-btn--active {
+    color: var(--accent, #1db954);
+  }
+
+  .preview-btn-small {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-subdued);
+    border-radius: 4px;
+    transition: color 0.12s, background 0.12s;
+  }
+
+  .preview-btn-small:hover:not(:disabled) {
+    color: var(--accent, #1db954);
+    background: color-mix(in srgb, var(--accent, #1db954) 12%, transparent);
+  }
+
+  .preview-btn-small--active {
+    color: var(--accent, #1db954);
+  }
+
+  .yt-row--active {
+    background: color-mix(in srgb, var(--accent, #1db954) 10%, transparent);
+  }
+
+  .yt-track-row--active {
+    background: color-mix(in srgb, var(--accent, #1db954) 8%, transparent);
+  }
+
+  .preview-player {
+    width: 100%;
+    grid-column: 1 / -1;
+  }
+
+  .preview-player iframe {
+    width: 100%;
+    height: 158px;
+    border: none;
+    display: block;
+  }
+
+  .preview-player-inline {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  .preview-player-inline iframe {
+    width: 100%;
+    height: 120px;
+    border: none;
+    display: block;
   }
 </style>

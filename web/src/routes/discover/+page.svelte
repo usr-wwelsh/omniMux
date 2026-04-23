@@ -111,7 +111,7 @@
               class="preview-btn"
               class:preview-btn--active={isPreviewing}
               onclick={() => startPreview(track)}
-              title={isPreviewing ? 'Stop preview' : 'Preview ~30s'}
+              title={isPreviewing ? 'Stop preview' : 'Preview'}
               disabled={isLoading && !isPreviewing}
             >
               {#if isLoading}
@@ -132,7 +132,7 @@
           {#if isPreviewing && previewYtId}
             <div class="preview-player">
               <iframe
-                src="https://www.youtube.com/embed/{previewYtId}?start=0&end=30&autoplay=1"
+                src="https://www.youtube.com/embed/{previewYtId}?autoplay=1"
                 allow="autoplay; encrypted-media"
                 frameborder="0"
                 title="Preview"
@@ -142,7 +142,7 @@
         </div>
       {/each}
     </div>
-    <p class="hint">Suggestions refresh hourly · click any track to search YouTube · ▶ previews ~30s</p>
+    <p class="hint">Suggestions refresh hourly · click any track to search YouTube · ▶ previews</p>
   {/if}
 </div>
 
