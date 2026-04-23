@@ -275,11 +275,20 @@ export const subsonic = {
   },
 
   async getAllAlbums(): Promise<Album[]> {
-    const data = await subsonicGet('getAlbumList2.view', { type: 'alphabeticalByName', size: '500' });
-    return (data.albumList2?.album || []).map((al: any) => ({
-      id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
-      coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
-    }));
+    const albums: Album[] = [];
+    const size = 500;
+    let offset = 0;
+    while (true) {
+      const data = await subsonicGet('getAlbumList2.view', { type: 'alphabeticalByName', size: size.toString(), offset: offset.toString() });
+      const batch = (data.albumList2?.album || []).map((al: any) => ({
+        id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
+        coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
+      }));
+      if (batch.length === 0) break;
+      albums.push(...batch);
+      offset += size;
+    }
+    return albums;
   },
 
   async getRandomSongs(count = 20): Promise<Song[]> {
