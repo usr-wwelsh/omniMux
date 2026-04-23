@@ -16,6 +16,7 @@ router = APIRouter()
 
 _DISCOVER_TTL = 3600
 _IMG_TTL = 7 * 24 * 3600
+_IMG_MISS_TTL = 600  # retry failures after 10 min instead of poisoning for a week
 
 
 class DiscoverResult(BaseModel):
@@ -105,7 +106,8 @@ async def discover(
         for t in suggestions
     ]
 
-    if results_out:
+    # Avoid caching tiny result sets — usually means Last.fm rate-limited us.
+    if len(results_out) >= max(10, limit // 5):
         cache.set(cache_key, results_out, _DISCOVER_TTL)
     return results_out
 
@@ -133,11 +135,13 @@ async def discover_images(
 
     if to_fetch:
         try:
-            await asyncio.wait_for(enrich_images(to_fetch), timeout=10.0)
+            await asyncio.wait_for(enrich_images(to_fetch), timeout=15.0)
         except asyncio.TimeoutError:
             pass
         for t in to_fetch:
-            cache.set(f"img:{t['artist']}:{t['title']}", t.get("image", ""), _IMG_TTL)
+            img = t.get("image", "")
+            key = f"img:{t['artist']}:{t['title']}"
+            cache.set(key, img, _IMG_TTL if img else _IMG_MISS_TTL)
         cached_results.extend(to_fetch)
 
     return [

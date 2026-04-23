@@ -158,44 +158,57 @@ async def _itunes_artwork(artist: str, title: str, retries: int = 2) -> str:
 
 
 async def enrich_images(tracks: list[dict]) -> list[dict]:
-    """Fetch missing album art from MusicBrainz or iTunes in parallel batches."""
+    """Fetch missing album art (iTunes first, MusicBrainz fallback) with shared client."""
     to_enrich = [t for t in tracks if not t.get("image")]
     if not to_enrich:
         return tracks
 
+    sem = asyncio.Semaphore(8)
+
     async def _fetch_and_update(track: dict) -> None:
-        """Fetch image from MusicBrainz first, fall back to iTunes."""
-        img = await _musicbrainz_artwork(track["artist"], track["title"])
-        if not img:
+        async with sem:
             img = await _itunes_artwork(track["artist"], track["title"])
-        if img:
-            track["image"] = img
+            if not img:
+                img = await _musicbrainz_artwork(track["artist"], track["title"])
+            if img:
+                track["image"] = img
 
-    # Batch in groups of 20 for parallel requests (MB is slower)
-    batch_size = 20
-    for i in range(0, len(to_enrich), batch_size):
-        batch = to_enrich[i : i + batch_size]
-        await asyncio.gather(*[_fetch_and_update(t) for t in batch], return_exceptions=True)
-
+    await asyncio.gather(*[_fetch_and_update(t) for t in to_enrich], return_exceptions=True)
     return tracks
+
+
+_LASTFM_SEM = asyncio.Semaphore(4)
+
+
+async def _lastfm_call(client: httpx.AsyncClient, params: dict) -> dict:
+    """Throttled Last.fm GET with retry. Returns parsed JSON or {}."""
+    async with _LASTFM_SEM:
+        for attempt in range(3):
+            try:
+                resp = await client.get("https://ws.audioscrobbler.com/2.0/", params=params)
+                if resp.status_code == 200:
+                    return resp.json()
+                if resp.status_code == 429:
+                    await asyncio.sleep(0.8 * (attempt + 1))
+                    continue
+            except Exception:
+                pass
+            await asyncio.sleep(0.4 * (2 ** attempt))
+    return {}
 
 
 async def lastfm_similar(artist: str, title: str, limit: int = 10) -> list[dict]:
     """Return similar tracks from Last.fm. Falls back to artist.getSimilar if track is unknown."""
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                "https://ws.audioscrobbler.com/2.0/",
-                params={
-                    "method": "track.getSimilar",
-                    "artist": artist,
-                    "track": title,
-                    "api_key": LASTFM_KEY,
-                    "format": "json",
-                    "limit": limit,
-                },
-            )
-        tracks = resp.json().get("similartracks", {}).get("track", [])
+    async with httpx.AsyncClient(timeout=10) as client:
+        data = await _lastfm_call(client, {
+            "method": "track.getSimilar",
+            "artist": artist,
+            "track": title,
+            "api_key": LASTFM_KEY,
+            "format": "json",
+            "limit": limit,
+        })
+        tracks = data.get("similartracks", {}).get("track", [])
         if tracks:
             return [
                 {
@@ -206,54 +219,34 @@ async def lastfm_similar(artist: str, title: str, limit: int = 10) -> list[dict]
                 }
                 for t in tracks
             ]
-    except Exception:
-        pass
 
-    # Fallback: artist.getSimilar — much higher coverage since it only needs the artist name
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                "https://ws.audioscrobbler.com/2.0/",
-                params={
-                    "method": "artist.getSimilar",
-                    "artist": artist,
-                    "api_key": LASTFM_KEY,
-                    "format": "json",
-                    "limit": limit,
-                },
-            )
-        similar_artists = resp.json().get("similarartists", {}).get("artist", [])
+        data = await _lastfm_call(client, {
+            "method": "artist.getSimilar",
+            "artist": artist,
+            "api_key": LASTFM_KEY,
+            "format": "json",
+            "limit": limit,
+        })
+        similar_artists = data.get("similarartists", {}).get("artist", [])
         if not similar_artists:
             return []
 
-        # Get top tracks for each similar artist (parallel, capped at 20)
-        sa_names = [sa["name"] for sa in similar_artists[:20] if sa.get("name")]
-
         async def _top_tracks(name: str, artist_score: float) -> list[dict]:
-            try:
-                async with httpx.AsyncClient(timeout=10) as client:
-                    tr = await client.get(
-                        "https://ws.audioscrobbler.com/2.0/",
-                        params={
-                            "method": "artist.getTopTracks",
-                            "artist": name,
-                            "api_key": LASTFM_KEY,
-                            "format": "json",
-                            "limit": 3,
-                        },
-                    )
-                top = tr.json().get("toptracks", {}).get("track", [])
-                return [
-                    {"artist": name, "title": t["name"], "image": _best_image(t.get("image", [])), "score": artist_score}
-                    for t in top
-                ]
-            except Exception:
-                return []
+            d = await _lastfm_call(client, {
+                "method": "artist.getTopTracks",
+                "artist": name,
+                "api_key": LASTFM_KEY,
+                "format": "json",
+                "limit": 3,
+            })
+            top = d.get("toptracks", {}).get("track", [])
+            return [
+                {"artist": name, "title": t["name"], "image": _best_image(t.get("image", [])), "score": artist_score}
+                for t in top
+            ]
 
         nested = await asyncio.gather(*[
             _top_tracks(sa["name"], float(sa.get("match", 0)))
-            for sa in similar_artists[:20] if sa.get("name")
-        ])
-        return [t for tracks in nested for t in tracks]
-    except Exception:
-        return []
+            for sa in similar_artists[:15] if sa.get("name")
+        ], return_exceptions=True)
+        return [t for result in nested if isinstance(result, list) for t in result]
