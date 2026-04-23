@@ -16,6 +16,7 @@ def _read_tags(file_path: Path) -> dict | None:
             "file_path": str(file_path),
             "title": (audio.get("title") or [""])[0],
             "artist": (audio.get("artist") or [""])[0],
+            "albumartist": (audio.get("albumartist") or [""])[0],
             "album": (audio.get("album") or [""])[0],
             "genre": (audio.get("genre") or [""])[0],
             "year": (audio.get("date") or [""])[0][:4],
@@ -110,6 +111,8 @@ def write_tags(file_paths: list[str], tags: dict) -> tuple[int, list[str]]:
                 audio["title"] = tags["title"]
             if tags.get("artist"):
                 audio["artist"] = tags["artist"]
+            if tags.get("albumartist"):
+                audio["albumartist"] = tags["albumartist"]
             if tags.get("album"):
                 audio["album"] = tags["album"]
             if tags.get("genre"):

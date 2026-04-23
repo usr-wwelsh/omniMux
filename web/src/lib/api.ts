@@ -140,6 +140,12 @@ export interface QueueState {
   queue_version: number;
 }
 
+export interface DiscoverResult {
+  artist: string;
+  title: string;
+  image_url: string;
+}
+
 export interface TaggerTrack {
   file_path: string;
   title: string;
@@ -336,6 +342,35 @@ export const api = {
 
   async getIgnoredTracks(): Promise<Array<{ title: string; artist: string }>> {
     return request('/api/tagger/ignored');
+  },
+
+  async retagTracks(file_paths: string[]): Promise<{ retagged: number; skipped: number; errors: string[] }> {
+    return request('/api/tagger/retag', {
+      method: 'POST',
+      body: JSON.stringify({ file_paths }),
+    });
+  },
+
+  async undoTags(file_paths: string[]): Promise<{ restored: number; skipped: number; errors: string[] }> {
+    return request('/api/tagger/restore', {
+      method: 'POST',
+      body: JSON.stringify({ file_paths }),
+    });
+  },
+
+  async mergeAlbums(
+    target_album: string,
+    target_albumartist: string,
+    source_albums: Array<{ album: string; artist: string }>,
+  ): Promise<{ merged: number; errors: string[] }> {
+    return request('/api/tagger/merge-albums', {
+      method: 'POST',
+      body: JSON.stringify({ target_album, target_albumartist, source_albums }),
+    });
+  },
+
+  async getDiscover(limit = 20): Promise<DiscoverResult[]> {
+    return request(`/api/discover?limit=${limit}`);
   },
 
   async getSettings(): Promise<Record<string, string>> {

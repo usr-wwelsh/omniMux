@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from db.database import async_session
 from db.models import Download, TrackMapping
+from services.discovery import fingerprint_lookup
 from services.metadata import tag_file
 from services.navidrome import trigger_scan, search_song, get_or_create_playlist, add_song_to_playlist
 
@@ -125,10 +126,26 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
     await _update_download(download_id, status="analyzing", progress=85)
     mood_result = await _analyze_mood(str(file_path))
 
-    # Step 3: Tag
+    # Step 3: AcousticID metadata enrichment — override sloppy YT metadata if confident match
+    try:
+        acoustid_meta = await fingerprint_lookup(str(file_path))
+        if acoustid_meta:
+            if acoustid_meta.get("title"):
+                info["title"] = acoustid_meta["title"]
+            if acoustid_meta.get("artist"):
+                info["artist"] = acoustid_meta["artist"]
+            if acoustid_meta.get("album") and not target_album:
+                info["album"] = acoustid_meta["album"]
+    except Exception:
+        pass
+
+    # Step 4: Tag
     await _update_download(download_id, status="tagging", progress=90)
     try:
-        await tag_file(str(file_path), info, mood_result, target_album=target_album)
+        # When downloading an album, use the initiating artist as albumartist so all
+        # tracks group together in Navidrome regardless of per-track featured artists.
+        album_artist = artist if target_album else None
+        await tag_file(str(file_path), info, mood_result, target_album=target_album, album_artist=album_artist)
     except Exception as e:
         await _update_download(download_id, status="failed", error=f"Tagging failed: {e}")
         return

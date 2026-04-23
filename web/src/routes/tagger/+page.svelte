@@ -5,9 +5,26 @@
   import { onMount } from 'svelte';
   import { api, type TaggerTrack } from '$lib/api';
 
+  let retagging = $state(false);
+  let undoing = $state(false);
+  let undoPaths = $state<string[]>([]);
+
   onMount(() => {
     if (get(isGuest)) goto('/');
+    const saved = localStorage.getItem('tagger_undo_paths');
+    if (saved) {
+      try { undoPaths = JSON.parse(saved); } catch {}
+    }
   });
+
+  function setUndoPaths(paths: string[]) {
+    undoPaths = paths;
+    if (paths.length > 0) {
+      localStorage.setItem('tagger_undo_paths', JSON.stringify(paths));
+    } else {
+      localStorage.removeItem('tagger_undo_paths');
+    }
+  }
 
   let tracks = $state<TaggerTrack[]>([]);
   let loading = $state(true);
@@ -20,6 +37,7 @@
   // Bulk edit fields — empty string = don't change
   let bulkTitle = $state('');
   let bulkArtist = $state('');
+  let bulkAlbumArtist = $state('');
   let bulkAlbum = $state('');
   let bulkGenre = $state('');
   let bulkYear = $state('');
@@ -104,6 +122,7 @@
   function clearBulk() {
     bulkTitle = '';
     bulkArtist = '';
+    bulkAlbumArtist = '';
     bulkAlbum = '';
     bulkGenre = '';
     bulkYear = '';
@@ -127,10 +146,43 @@
     }
   }
 
+  async function retagSelected() {
+    retagging = true;
+    saveResult = null;
+    setUndoPaths([]);
+    const paths = [...selected];
+    try {
+      const result = await api.retagTracks(paths);
+      saveResult = `Retagged ${result.retagged} · skipped ${result.skipped}${result.errors.length ? ` · ${result.errors.length} error(s)` : ''}.`;
+      if (result.retagged > 0) setUndoPaths(paths);
+      tracks = await api.getTaggerTracks();
+    } catch (e: any) {
+      saveResult = `Error: ${e.message}`;
+    } finally {
+      retagging = false;
+    }
+  }
+
+  async function undoLastOp() {
+    undoing = true;
+    saveResult = null;
+    try {
+      const result = await api.undoTags(undoPaths);
+      saveResult = `Restored ${result.restored} track${result.restored !== 1 ? 's' : ''}${result.skipped ? ` · ${result.skipped} had no snapshot` : ''}${result.errors.length ? ` · ${result.errors.length} error(s)` : ''}.`;
+      setUndoPaths([]);
+      tracks = await api.getTaggerTracks();
+    } catch (e: any) {
+      saveResult = `Error: ${e.message}`;
+    } finally {
+      undoing = false;
+    }
+  }
+
   async function applyTags() {
     const tags: Record<string, string> = {};
     if (bulkTitle) tags.title = bulkTitle;
     if (bulkArtist) tags.artist = bulkArtist;
+    if (bulkAlbumArtist) tags.albumartist = bulkAlbumArtist;
     if (bulkAlbum) tags.album = bulkAlbum;
     if (bulkGenre) tags.genre = bulkGenre;
     if (bulkYear) tags.year = bulkYear;
@@ -142,6 +194,7 @@
 
     saving = true;
     saveResult = null;
+    setUndoPaths([]);
     try {
       const paths = [...selected];
       const results: string[] = [];
@@ -149,6 +202,7 @@
       if (Object.keys(tags).length > 0) {
         const result = await api.writeTags(paths, tags);
         results.push(`Updated ${result.updated} track${result.updated !== 1 ? 's' : ''}${result.errors.length ? ` · ${result.errors.length} tag error(s)` : ''}.`);
+        if (result.updated > 0) setUndoPaths(paths);
         for (const fp of paths) {
           const idx = tracks.findIndex((t) => t.file_path === fp);
           if (idx !== -1) {
@@ -215,6 +269,7 @@
           <input class="bulk-field" placeholder="Title" bind:value={bulkTitle} />
         {/if}
         <input class="bulk-field" placeholder="Artist" bind:value={bulkArtist} />
+        <input class="bulk-field" placeholder="Album Artist" bind:value={bulkAlbumArtist} />
         <input class="bulk-field" placeholder="Album" bind:value={bulkAlbum} />
         <input class="bulk-field" placeholder="Genre" bind:value={bulkGenre} />
         <input class="bulk-field bulk-field--narrow" placeholder="Year" bind:value={bulkYear} />
@@ -228,12 +283,20 @@
         {#if saveResult}
           <span class="save-result">{saveResult}</span>
         {/if}
+        {#if undoPaths.length > 0}
+          <button class="btn btn--ghost" onclick={undoLastOp} disabled={undoing}>
+            {undoing ? 'Undoing…' : 'Undo'}
+          </button>
+        {/if}
         <button class="btn btn--ghost" onclick={clearBulk}>Clear</button>
         {#if confirmDelete}
           <span class="delete-confirm-label">Delete {selected.size} file{selected.size !== 1 ? 's' : ''}?</span>
           <button class="btn btn--danger" onclick={deleteTracks} disabled={saving}>Yes, delete</button>
           <button class="btn btn--ghost" onclick={() => (confirmDelete = false)}>Cancel</button>
         {:else}
+          <button class="btn btn--ghost" onclick={retagSelected} disabled={saving || retagging} title="Auto-fix tags via audio fingerprint">
+            {retagging ? 'Retagging…' : 'Retag'}
+          </button>
           <button class="btn btn--danger-ghost" onclick={() => (confirmDelete = true)} disabled={saving}>
             Delete
           </button>

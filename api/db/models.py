@@ -61,6 +61,19 @@ class SystemConfig(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class TagSnapshot(Base):
+    __tablename__ = "tag_snapshots"
+
+    file_path: Mapped[str] = mapped_column(String(1000), primary_key=True)
+    title: Mapped[str] = mapped_column(String(500), default="")
+    artist: Mapped[str] = mapped_column(String(500), default="")
+    albumartist: Mapped[str] = mapped_column(String(500), default="")
+    album: Mapped[str] = mapped_column(String(500), default="")
+    genre: Mapped[str] = mapped_column(String(100), default="")
+    year: Mapped[str] = mapped_column(String(10), default="")
+    snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class TrackMapping(Base):
     __tablename__ = "track_mappings"
 

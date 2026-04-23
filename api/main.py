@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from db.database import init_db, async_session
 from db.models import Download
-from routers import auth, search, download, devices, playlists, tagger, settings, songs, guest
+from routers import auth, search, download, devices, playlists, tagger, settings, songs, guest, discovery
 
 
 async def _recover_stuck_downloads() -> None:
@@ -60,6 +60,7 @@ app.include_router(playlists.router, prefix="/api", tags=["playlists"])
 app.include_router(tagger.router, prefix="/api", tags=["tagger"])
 app.include_router(settings.router, prefix="/api", tags=["settings"])
 app.include_router(songs.router, prefix="/api", tags=["songs"])
+app.include_router(discovery.router, prefix="/api", tags=["discovery"])
 
 
 @app.get("/api/health")

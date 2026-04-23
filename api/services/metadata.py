@@ -1,12 +1,18 @@
-import io
+import base64
+import re
 from pathlib import Path
 
 import httpx
 from mutagen.oggopus import OggOpus
 from mutagen.mp3 import MP3
-from mutagen.id3 import ID3, TIT2, TPE1, TALB, TDRC, TCON, TBPM, TXXX, APIC, COMM
+from mutagen.id3 import ID3, TIT2, TPE1, TPE2, TALB, TDRC, TCON, TBPM, TXXX, APIC
 from mutagen.flac import Picture
-import base64
+
+_FEAT_RE = re.compile(r'\s*(?:feat\.?|ft\.?|featuring|with|,|&)\s+.+$', re.IGNORECASE)
+
+
+def _primary_artist(artist: str) -> str:
+    return _FEAT_RE.sub('', artist).strip() or artist
 
 
 async def _download_thumbnail(url: str) -> bytes | None:
@@ -23,9 +29,11 @@ async def _download_thumbnail(url: str) -> bytes | None:
 
 
 def _build_metadata(info: dict, mood_result: dict | None) -> dict:
+    artist = info.get("artist", info.get("channel", "Unknown"))
     meta = {
         "title": info.get("title", "Unknown"),
-        "artist": info.get("artist", info.get("channel", "Unknown")),
+        "artist": artist,
+        "albumartist": info.get("albumartist") or _primary_artist(artist),
         "album": info.get("album", "YouTube"),
         "date": info.get("upload_date", "")[:4] if info.get("upload_date") else "",
         "genre": info.get("genre", ""),
@@ -43,10 +51,12 @@ def _build_metadata(info: dict, mood_result: dict | None) -> dict:
     return meta
 
 
-async def tag_file(file_path: str, info: dict, mood_result: dict | None, target_album: str | None = None) -> None:
+async def tag_file(file_path: str, info: dict, mood_result: dict | None, target_album: str | None = None, album_artist: str | None = None) -> None:
     meta = _build_metadata(info, mood_result)
     if target_album:
         meta["album"] = target_album
+    if album_artist:
+        meta["albumartist"] = album_artist
     thumbnail_url = info.get("thumbnail", "")
     cover_data = await _download_thumbnail(thumbnail_url)
     ext = Path(file_path).suffix.lower()
@@ -61,6 +71,7 @@ def _tag_opus(file_path: str, meta: dict, cover_data: bytes | None) -> None:
     audio = OggOpus(file_path)
     audio["title"] = meta["title"]
     audio["artist"] = meta["artist"]
+    audio["albumartist"] = meta["albumartist"]
     audio["album"] = meta["album"]
     if meta["date"]:
         audio["date"] = meta["date"]
@@ -79,7 +90,7 @@ def _tag_opus(file_path: str, meta: dict, cover_data: bytes | None) -> None:
     if cover_data:
         pic = Picture()
         pic.data = cover_data
-        pic.type = 3  # front cover
+        pic.type = 3
         pic.mime = "image/jpeg"
         audio["metadata_block_picture"] = [base64.b64encode(pic.write()).decode("ascii")]
 
@@ -98,6 +109,7 @@ def _tag_mp3(file_path: str, meta: dict, cover_data: bytes | None) -> None:
     tags = audio.tags
     tags.add(TIT2(encoding=3, text=meta["title"]))
     tags.add(TPE1(encoding=3, text=meta["artist"]))
+    tags.add(TPE2(encoding=3, text=meta["albumartist"]))
     tags.add(TALB(encoding=3, text=meta["album"]))
     if meta["date"]:
         tags.add(TDRC(encoding=3, text=meta["date"]))

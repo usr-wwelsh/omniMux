@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import { api, thumbUrl, type YouTubeResult } from '$lib/api';
   import { subsonic, type Artist, type Album, type Song } from '$lib/subsonic';
   import { playSong, formatTime } from '$lib/stores/player';
@@ -6,7 +7,7 @@
   import TrackList from '../../components/TrackList.svelte';
   import AlbumCard from '../../components/AlbumCard.svelte';
 
-  let query = $state('');
+  let query = $state(page.url.searchParams.get('q') ?? '');
   let libraryArtists = $state<Artist[]>([]);
   let libraryAlbums = $state<Album[]>([]);
   let librarySongs = $state<Song[]>([]);
@@ -72,6 +73,9 @@
     }
     searchTimeout = setTimeout(() => doSearch(), 300);
   }
+
+  // Fire immediately if navigated here with ?q= from discover
+  if (query.length >= 2) doSearch();
 
   function toggleAlbum(albumName: string) {
     const next = new Set(expandedAlbums);
