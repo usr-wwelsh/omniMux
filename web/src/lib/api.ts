@@ -144,6 +144,8 @@ export interface DiscoverResult {
   artist: string;
   title: string;
   image_url: string;
+  score: number;
+  seed_artist: string;
 }
 
 export interface TaggerTrack {
@@ -369,8 +371,17 @@ export const api = {
     });
   },
 
-  async getDiscover(limit = 20): Promise<DiscoverResult[]> {
-    return request(`/api/discover?limit=${limit}`);
+  async getDiscover(limit = 20, fresh = false): Promise<DiscoverResult[]> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (fresh) params.append('fresh', 'true');
+    return request(`/api/discover?${params}`);
+  },
+
+  async getDiscoverImages(tracks: Array<{artist: string; title: string}>): Promise<DiscoverResult[]> {
+    return request('/api/discover/images', {
+      method: 'POST',
+      body: JSON.stringify(tracks),
+    });
   },
 
   async getSettings(): Promise<Record<string, string>> {

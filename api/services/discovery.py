@@ -100,6 +100,86 @@ def _best_image(images) -> str:
     return ""
 
 
+async def _musicbrainz_artwork(artist: str, title: str) -> str:
+    """Fetch album artwork from MusicBrainz Cover Art Archive."""
+    try:
+        async with httpx.AsyncClient(timeout=3) as client:
+            resp = await client.get(
+                "https://musicbrainz.org/ws/2/recording",
+                params={"query": f'"{title}" AND artist:"{artist}"', "limit": 5, "fmt": "json"},
+                headers=_MB_HEADERS,
+            )
+        recordings = resp.json().get("recordings", [])
+        for recording in recordings:
+            releases = recording.get("releases", [])
+            for release in releases:
+                mbid = release.get("id", "")
+                if mbid:
+                    try:
+                        art_resp = await client.get(
+                            f"https://coverartarchive.org/release/{mbid}/front.json",
+                            timeout=2,
+                        )
+                        if art_resp.status_code == 200:
+                            data = art_resp.json()
+                            images = data.get("images", [])
+                            if images:
+                                return images[0].get("image", "")
+                    except Exception:
+                        continue
+        return ""
+    except Exception:
+        return ""
+
+
+async def _itunes_artwork(artist: str, title: str, retries: int = 2) -> str:
+    """Fetch album artwork from iTunes Search API with retries."""
+    for attempt in range(retries):
+        try:
+            async with httpx.AsyncClient(timeout=3) as client:
+                resp = await client.get(
+                    "https://itunes.apple.com/search",
+                    params={
+                        "term": f"{artist} {title}",
+                        "media": "music",
+                        "limit": 1,
+                    },
+                )
+            results = resp.json().get("results", [])
+            if results:
+                url = results[0].get("artworkUrl100", "")
+                if url:
+                    return url.replace("100x100bb", "500x500bb")
+        except Exception:
+            pass
+        if attempt < retries - 1:
+            await asyncio.sleep(0.3 * (2 ** attempt))
+    return ""
+
+
+async def enrich_images(tracks: list[dict]) -> list[dict]:
+    """Fetch missing album art from MusicBrainz or iTunes in parallel batches."""
+    to_enrich = [t for t in tracks if not t.get("image")]
+    if not to_enrich:
+        return tracks
+
+    async def _fetch_and_update(track: dict) -> None:
+        """Fetch image from MusicBrainz first, fall back to iTunes."""
+        img = await _musicbrainz_artwork(track["artist"], track["title"])
+        if not img:
+            img = await _itunes_artwork(track["artist"], track["title"])
+        if img:
+            track["image"] = img
+
+    # Batch in groups of 20 for parallel requests (MB is slower)
+    batch_size = 20
+    for i in range(0, len(to_enrich), batch_size):
+        batch = to_enrich[i : i + batch_size]
+        await asyncio.gather(*[_fetch_and_update(t) for t in batch], return_exceptions=True)
+
+    return tracks
+
+
 async def lastfm_similar(artist: str, title: str, limit: int = 10) -> list[dict]:
     """Return similar tracks from Last.fm. Falls back to artist.getSimilar if track is unknown."""
     try:
@@ -122,6 +202,7 @@ async def lastfm_similar(artist: str, title: str, limit: int = 10) -> list[dict]
                     "artist": t["artist"]["name"],
                     "title": t["name"],
                     "image": _best_image(t.get("image", [])),
+                    "score": float(t.get("match", 0)),
                 }
                 for t in tracks
             ]
@@ -148,7 +229,7 @@ async def lastfm_similar(artist: str, title: str, limit: int = 10) -> list[dict]
         # Get top tracks for each similar artist (parallel, capped at 20)
         sa_names = [sa["name"] for sa in similar_artists[:20] if sa.get("name")]
 
-        async def _top_tracks(name: str) -> list[dict]:
+        async def _top_tracks(name: str, artist_score: float) -> list[dict]:
             try:
                 async with httpx.AsyncClient(timeout=10) as client:
                     tr = await client.get(
@@ -163,13 +244,16 @@ async def lastfm_similar(artist: str, title: str, limit: int = 10) -> list[dict]
                     )
                 top = tr.json().get("toptracks", {}).get("track", [])
                 return [
-                    {"artist": name, "title": t["name"], "image": _best_image(t.get("image", []))}
+                    {"artist": name, "title": t["name"], "image": _best_image(t.get("image", [])), "score": artist_score}
                     for t in top
                 ]
             except Exception:
                 return []
 
-        nested = await asyncio.gather(*[_top_tracks(n) for n in sa_names])
+        nested = await asyncio.gather(*[
+            _top_tracks(sa["name"], float(sa.get("match", 0)))
+            for sa in similar_artists[:20] if sa.get("name")
+        ])
         return [t for tracks in nested for t in tracks]
     except Exception:
         return []
