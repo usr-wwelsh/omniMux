@@ -44,8 +44,8 @@
   let bulkIgnore = $state<'' | 'true' | 'false'>(''); // '' = don't change
 
   type SortKey = 'title' | 'artist' | 'album' | 'genre' | 'year' | 'duration' | 'added_date' | 'ignore_in_autodj';
-  let sortKey = $state<SortKey>('title');
-  let sortAsc = $state(true);
+  let sortKey = $state<SortKey>('added_date');
+  let sortAsc = $state(false);
 
   function setSort(key: SortKey) {
     if (sortKey === key) {

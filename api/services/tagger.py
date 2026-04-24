@@ -40,14 +40,27 @@ def read_tags_for_path(file_path_str: str) -> dict | None:
     return _read_tags(path)
 
 
-def list_tracks() -> list[dict]:
-    tracks = []
+def list_tracks(limit: int = 0) -> list[dict]:
+    """List audio tracks, optionally limited by count. Sorted by mtime descending (most recent first)."""
     root = Path(MUSIC_DIR)
-    for f in sorted(root.rglob("*")):
+    files = []
+    for f in root.rglob("*"):
         if f.suffix.lower() in AUDIO_EXTENSIONS and f.is_file():
-            track = _read_tags(f)
-            if track:
-                tracks.append(track)
+            try:
+                files.append((f, f.stat().st_mtime))
+            except OSError:
+                pass
+    files.sort(key=lambda x: x[1], reverse=True)
+
+    tracks = []
+    count = 0
+    for f, _ in files:
+        track = _read_tags(f)
+        if track:
+            tracks.append(track)
+            count += 1
+            if limit > 0 and count >= limit:
+                break
     return tracks
 
 

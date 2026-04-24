@@ -63,7 +63,7 @@ async def get_tracks(
     session: AsyncSession = Depends(get_db),
     limit: int = 200,
 ):
-    tracks = tagger.list_tracks()
+    tracks = await asyncio.to_thread(tagger.list_tracks, limit)
 
     # Fetch all ignore flags and index by (title_lower_stripped, artist_lower_stripped)
     result = await session.execute(select(TrackFlags))
@@ -76,7 +76,7 @@ async def get_tracks(
         key = (track["title"].lower().strip(), track["artist"].lower().strip())
         track["ignore_in_autodj"] = flags.get(key, False)
 
-    return tracks[:limit] if limit > 0 else tracks
+    return tracks
 
 
 @router.post("/tagger/flags")
