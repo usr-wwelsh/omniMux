@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import { api } from '../api';
-import { crossfadeDuration, beatmatchEnabled, bpmTolerance, visCycleInterval, ambientIdleMinutes, djPersonality } from './autodj';
+import { crossfadeDuration, beatmatchEnabled, bpmTolerance, visCycleInterval, ambientIdleMinutes, djPersonality, visCyclingPaused } from './autodj';
 import { visMode } from './visualizer';
 import { theme } from './theme';
 
@@ -19,6 +19,7 @@ function schedulePush() {
       'omnimux-vis-cycle': String(get(visCycleInterval)),
       'omnimux-ambient': String(get(ambientIdleMinutes)),
       'omnimux-vis-mode': String(get(visMode)),
+      'omnimux-vis-cycling-paused': String(get(visCyclingPaused)),
       'omnimux-dj-personality': String(get(djPersonality)),
       'theme': String(get(theme)),
     };
@@ -39,6 +40,7 @@ export async function initSettingsSync() {
   visCycleInterval.subscribe(() => schedulePush());
   ambientIdleMinutes.subscribe(() => schedulePush());
   visMode.subscribe(() => schedulePush());
+  visCyclingPaused.subscribe(() => schedulePush());
   djPersonality.subscribe(() => schedulePush());
   theme.subscribe(() => schedulePush());
 
@@ -52,12 +54,35 @@ export async function initSettingsSync() {
     if ('omnimux-vis-cycle' in data) visCycleInterval.set(data['omnimux-vis-cycle'] as Parameters<typeof visCycleInterval.set>[0]);
     if ('omnimux-ambient' in data) ambientIdleMinutes.set(Number(data['omnimux-ambient']));
     if ('omnimux-vis-mode' in data) visMode.set(data['omnimux-vis-mode'] as Parameters<typeof visMode.set>[0]);
+    if ('omnimux-vis-cycling-paused' in data) visCyclingPaused.set(data['omnimux-vis-cycling-paused'] === 'true');
     if ('omnimux-dj-personality' in data) djPersonality.set(data['omnimux-dj-personality'] as Parameters<typeof djPersonality.set>[0]);
     if ('theme' in data) theme.set(data['theme'] as Parameters<typeof theme.set>[0]);
   } catch {}
   _loading = false;
 }
 
+// Continuous polling for settings changes (for phone→TV remote control)
+let _settingsPollTimer: ReturnType<typeof setInterval> | null = null;
+
+async function pullSettings() {
+  _loading = true;
+  try {
+    const data = await api.getSettings();
+    if ('omnimux-vis-mode' in data) visMode.set(data['omnimux-vis-mode'] as Parameters<typeof visMode.set>[0]);
+    if ('omnimux-vis-cycling-paused' in data) visCyclingPaused.set(data['omnimux-vis-cycling-paused'] === 'true');
+  } catch {} finally { _loading = false; }
+}
+
+export function startSettingsPoll() {
+  if (_settingsPollTimer) return;
+  _settingsPollTimer = setInterval(pullSettings, 2000);
+}
+
+export function stopSettingsPoll() {
+  if (_settingsPollTimer) { clearInterval(_settingsPollTimer); _settingsPollTimer = null; }
+}
+
 export function resetSettingsSync() {
   _initialized = false;
+  stopSettingsPoll();
 }

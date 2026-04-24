@@ -2,7 +2,7 @@ import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 import { getAudio } from './player';
 
-export type VisMode = 'off' | 'pan' | 'pulse' | 'warp' | 'ripple' | 'tunnel' | 'fractal' | 'kaleidoscope' | 'droste' | 'vortex' | 'glitch' | 'crystal' | 'aurora' | 'plasma' | 'sphere';
+export type VisMode = 'off' | 'pan' | 'pulse' | 'warp' | 'ripple' | 'tunnel' | 'fractal' | 'kaleidoscope' | 'droste' | 'vortex' | 'glitch' | 'crystal' | 'aurora' | 'plasma' | 'sphere' | 'beatcut';
 
 const stored = browser ? (localStorage.getItem('omnimux-vis-mode') as VisMode | null) : null;
 export const visMode = writable<VisMode>(stored ?? 'pan');
@@ -155,4 +155,41 @@ export function overallFromBuf(buf: Uint8Array<ArrayBuffer>): number {
   let sum = 0;
   for (let i = 0; i < buf.length; i++) sum += buf[i];
   return (sum / buf.length) / 255;
+}
+
+// ── Beat Detection (Spectral Flux) ──────────────────────────────────────────
+// Detects onset (beat) by tracking positive energy delta in frequency spectrum.
+// Spectral flux = sum of positive magnitude differences between consecutive frames.
+
+let _prevFluxBuf: Float32Array | null = null;
+let _lastBeatMs = 0;
+const BEAT_COOLDOWN_MS = 200;   // max ~5 beats/s (~300 bpm)
+const FLUX_THRESHOLD = 0.08;    // tune: higher = fewer false positives
+
+export function detectBeat(buf: Uint8Array<ArrayBuffer>): boolean {
+  const n = buf.length;
+  if (!_prevFluxBuf || _prevFluxBuf.length !== n) {
+    _prevFluxBuf = new Float32Array(n);
+    for (let i = 0; i < n; i++) _prevFluxBuf[i] = buf[i] / 255;
+    return false;
+  }
+  let flux = 0;
+  for (let i = 0; i < n; i++) {
+    const cur = buf[i] / 255;
+    const diff = cur - _prevFluxBuf[i];
+    if (diff > 0) flux += diff;
+    _prevFluxBuf[i] = cur;
+  }
+  flux /= n;
+  const now = performance.now();
+  if (flux > FLUX_THRESHOLD && now - _lastBeatMs > BEAT_COOLDOWN_MS) {
+    _lastBeatMs = now;
+    return true;
+  }
+  return false;
+}
+
+export function resetBeatDetector(): void {
+  _prevFluxBuf = null;
+  _lastBeatMs = 0;
 }

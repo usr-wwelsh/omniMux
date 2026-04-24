@@ -12,7 +12,7 @@
   import QueuePanel from './QueuePanel.svelte';
   import {
     visMode, type VisMode, getAnalyser, resumeContext,
-    fillFrequencyData, bassFromBuf, midFromBuf, overallFromBuf,
+    fillFrequencyData, bassFromBuf, midFromBuf, overallFromBuf, detectBeat, resetBeatDetector,
   } from '$lib/stores/visualizer';
 
   // ── WebGL visualizer ─────────────────────────────────────────────────────
@@ -424,8 +424,8 @@ void main() {
 
   let artExpanded = $state(false);
 
-  const VIS_MODES: VisMode[] = ['off', 'pan', 'pulse', 'warp', 'ripple', 'tunnel', 'fractal', 'kaleidoscope', 'droste', 'vortex', 'glitch', 'crystal', 'aurora', 'plasma', 'sphere'];
-  const CANVAS_MODES = new Set<VisMode>(['warp', 'ripple', 'tunnel', 'fractal', 'kaleidoscope', 'droste', 'vortex', 'glitch', 'crystal', 'aurora', 'plasma', 'sphere']);
+  const VIS_MODES: VisMode[] = ['off', 'pan', 'pulse', 'warp', 'ripple', 'tunnel', 'fractal', 'kaleidoscope', 'droste', 'vortex', 'glitch', 'crystal', 'aurora', 'plasma', 'sphere', 'beatcut'];
+  const CANVAS_MODES = new Set<VisMode>(['warp', 'ripple', 'tunnel', 'fractal', 'kaleidoscope', 'droste', 'vortex', 'glitch', 'crystal', 'aurora', 'plasma', 'sphere', 'beatcut']);
 
   // Visualizer state
   let visCanvas: HTMLCanvasElement | undefined = $state();
@@ -436,6 +436,14 @@ void main() {
   let freqBuf: Uint8Array<ArrayBuffer> | null = null;
   let imgBitmap: ImageBitmap | null = null;
   let glState: GLState | null = null;
+
+  // Beatcut + title card state
+  let beatFlash = $state(false);
+  let beatcutShader = $state<string>('tunnel');
+  let liveBass = $state(0);
+  let titleCardVisible = $state(false);
+  let titleCardTimer: ReturnType<typeof setTimeout> | null = null;
+  const BEATCUT_SHADERS = ['tunnel', 'fractal', 'kaleidoscope', 'vortex', 'glitch', 'crystal', 'plasma'];
 
   // Auto-hide controls in art-mode after 2s of no mouse/touch movement
   let controlsVisible = $state(true);
@@ -559,6 +567,7 @@ void main() {
     const mode = $visMode;
     if (!artExpanded || mode === 'off' || mode === 'pan') {
       stopRaf();
+      resetBeatDetector();
       // Reset pulse scale when leaving pulse mode
       if (artImg) artImg.style.transform = '';
       return;
@@ -570,8 +579,17 @@ void main() {
     startRaf(mode, analyser);
     return () => {
       stopRaf();
+      resetBeatDetector();
       if (artImg) artImg.style.transform = '';
     };
+  });
+
+  // Title card: show on track change, auto-hide after 4s
+  $effect(() => {
+    if (!$currentTrack || !artExpanded) return;
+    titleCardVisible = true;
+    if (titleCardTimer) clearTimeout(titleCardTimer);
+    titleCardTimer = setTimeout(() => { titleCardVisible = false; }, 4000);
   });
 
   function stopRaf() {
@@ -587,8 +605,16 @@ void main() {
       if (now - lastFrame < FRAME_MS) return;
       lastFrame = now;
       fillFrequencyData(analyser, freqBuf!);
+      liveBass = bassFromBuf(freqBuf!);
       if (mode === 'pulse') drawPulse();
-      else drawGL(mode);
+      else if (mode === 'beatcut') {
+        if (detectBeat(freqBuf!)) {
+          beatcutShader = BEATCUT_SHADERS[Math.floor(Math.random() * BEATCUT_SHADERS.length)];
+          beatFlash = true;
+          setTimeout(() => { beatFlash = false; }, 80);
+        }
+        drawGL(beatcutShader);
+      } else drawGL(mode);
     }
     rafId = requestAnimationFrame(frame);
   }
@@ -648,6 +674,17 @@ void main() {
   {#if artExpanded && displayedCoverUrl}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="fs-art-bg-wrap" onclick={collapseArt}>
+      <!-- Beat flash overlay -->
+      <div class="beat-flash" class:active={beatFlash}></div>
+
+      <!-- Title card -->
+      {#if titleCardVisible && $currentTrack}
+        <div class="title-card" style="transform: translate(-50%, -50%) scale({1 + liveBass * 0.04})">
+          <div class="tc-artist">{$currentTrack.artist}</div>
+          <div class="tc-title">{$currentTrack.title}</div>
+        </div>
+      {/if}
+
       <img
         class="fs-art-bg"
         class:vis-pan={$visMode === 'pan'}
@@ -1456,6 +1493,52 @@ void main() {
     z-index: 10;
     pointer-events: none;
     white-space: nowrap;
+  }
+
+  /* ── Beat Flash & Title Card ── */
+
+  .beat-flash {
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 4;
+    transition: opacity 0.04s;
+  }
+  .beat-flash.active { opacity: 0.18; }
+
+  .title-card {
+    position: absolute;
+    top: 40%;
+    left: 50%;
+    text-align: center;
+    pointer-events: none;
+    z-index: 3;
+    animation: tc-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    transition: transform 0.04s;
+  }
+  @keyframes tc-in {
+    from { opacity: 0; transform: translate(-50%, -40%); }
+    to   { opacity: 1; transform: translate(-50%, -50%); }
+  }
+
+  .tc-artist {
+    font-size: clamp(18px, 4vw, 36px);
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.7);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
+  }
+  .tc-title {
+    font-size: clamp(28px, 7vw, 72px);
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.05;
+    text-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
+    word-break: break-word;
   }
 
 </style>

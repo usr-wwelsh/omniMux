@@ -9,7 +9,8 @@ import {
   suppressQueuePollApply, type DJMeta,
 } from './player';
 import { visMode, type VisMode, startAutoGain, stopAutoGain, freezeAutoGain, thawAutoGain, getAnalyser, fillFrequencyData, overallFromBuf } from './visualizer';
-import { showFullscreenPlayer, artExpandRequested, autoDJToast } from './ui';
+import { showFullscreenPlayer, artExpandRequested, autoDJToast, artModeActive } from './ui';
+import { startSettingsPoll, stopSettingsPoll } from './settingsSync';
 
 // ── Persisted settings ────────────────────────────────────────────────────────
 
@@ -623,7 +624,7 @@ let _visCycleTrackUnsub: (() => void) | null = null;
 let _visCycleFirstFire = true;
 
 // Whether auto-cycling is paused by the user (toggle in fullscreen player)
-export const visCyclingPaused = writable<boolean>(false);
+export const visCyclingPaused = persistedWritable<boolean>('omnimux-vis-cycling-paused', false, (v) => v === 'true');
 
 // Advance to the next visualizer. Skips if vis is 'off' or cycling is paused.
 export function advanceVis() {
@@ -634,10 +635,10 @@ export function advanceVis() {
   visMode.set(VIS_CYCLE[(idx === -1 ? 0 : idx + 1) % VIS_CYCLE.length]);
 }
 
-function startVisCycler() {
+export function startVisCycler() {
   stopVisCycler();
-  if (get(visMode) === 'off') return; // don't start cycler when vis is disabled
-  if (get(visCyclingPaused)) return;  // don't start when user paused cycling
+  if (get(visMode) === 'off') return;
+  if (get(visCyclingPaused)) return;
   const interval = get(visCycleInterval);
   if (interval === 'track') {
     _visCycleFirstFire = true;
@@ -650,32 +651,46 @@ function startVisCycler() {
   }
 }
 
-function stopVisCycler() {
+export function stopVisCycler() {
   if (_visCycleTimer) { clearInterval(_visCycleTimer); _visCycleTimer = null; }
   _visCycleTrackUnsub?.();
   _visCycleTrackUnsub = null;
 }
 
-// Restart cycler when setting changes while Auto DJ is active
+// Master cycler lifecycle: react to art mode, vis mode, and pause state
+artModeActive.subscribe((active) => {
+  if (active && get(visMode) !== 'off' && !get(visCyclingPaused)) {
+    startVisCycler();
+  } else {
+    stopVisCycler();
+  }
+});
+
+// Start settings polling when entering art mode (for phone→TV remote control)
+artModeActive.subscribe((active) => {
+  if (active) startSettingsPoll(); else stopSettingsPoll();
+});
+
+// Restart cycler when interval setting changes while art mode is active
 visCycleInterval.subscribe(() => {
-  if (get(autoDJActive)) {
+  if (get(artModeActive) && get(visMode) !== 'off' && !get(visCyclingPaused)) {
     startVisCycler();
   }
 });
 
-// Stop/restart cycler when visMode is toggled to/from 'off' while Auto DJ is active
+// Stop/restart cycler when visMode is toggled to/from 'off' while art mode is active
 visMode.subscribe((mode) => {
-  if (!get(autoDJActive)) return;
+  if (!get(artModeActive)) return;
   if (mode === 'off') {
     stopVisCycler();
-  } else if (!_visCycleTimer && !_visCycleTrackUnsub) {
+  } else if (!_visCycleTimer && !_visCycleTrackUnsub && !get(visCyclingPaused)) {
     startVisCycler();
   }
 });
 
-// Stop/restart cycler when user pauses/resumes cycling
+// Stop/restart cycler when user pauses/resumes cycling while art mode is active
 visCyclingPaused.subscribe((paused) => {
-  if (!get(autoDJActive)) return;
+  if (!get(artModeActive)) return;
   if (paused) {
     stopVisCycler();
   } else {
