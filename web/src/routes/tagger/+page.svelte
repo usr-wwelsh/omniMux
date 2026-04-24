@@ -244,10 +244,30 @@
     return `${m}:${String(sec).padStart(2, '0')}`;
   }
 
-  // Placeholder for bulk title field when exactly 1 track is selected
   let titlePlaceholder = $derived(
     selectedTracks.length === 1 ? selectedTracks[0].title : ''
   );
+
+  // Virtual scroll
+  const ROW_HEIGHT = 36;
+  const BUFFER_ROWS = 10;
+  let scrollTop = $state(0);
+  let containerHeight = $state(0);
+  let tableContainer: HTMLDivElement;
+
+  function handleScroll(e: Event) {
+    const target = e.target as HTMLDivElement;
+    scrollTop = target.scrollTop;
+  }
+
+  let visibleRange = $derived.by(() => {
+    const visibleRows = Math.ceil(containerHeight / ROW_HEIGHT) + BUFFER_ROWS * 2;
+    const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER_ROWS);
+    const endIdx = Math.min(filtered.length, startIdx + visibleRows);
+    return { startIdx, endIdx, visibleRows };
+  });
+
+  let visibleTracks = $derived(filtered.slice(visibleRange.startIdx, visibleRange.endIdx));
 </script>
 
 <div class="tagger-page">
@@ -313,7 +333,12 @@
   {:else if tracks.length === 0}
     <p class="status-text">No tracks found in the music directory.</p>
   {:else}
-    <div class="table-wrap">
+    <div
+      class="table-wrap"
+      bind:this={tableContainer}
+      bind:clientHeight={containerHeight}
+      onscroll={handleScroll}
+    >
       <table class="track-table">
         <thead>
           <tr>
@@ -335,7 +360,10 @@
           </tr>
         </thead>
         <tbody>
-          {#each filtered as track (track.file_path)}
+          {#if visibleRange.startIdx > 0}
+            <tr style="height: {visibleRange.startIdx * ROW_HEIGHT}px"></tr>
+          {/if}
+          {#each visibleTracks as track (track.file_path)}
             <tr
               class:selected={selected.has(track.file_path)}
               onclick={() => toggleTrack(track.file_path)}
@@ -361,6 +389,9 @@
               </td>
             </tr>
           {/each}
+          {#if visibleRange.endIdx < filtered.length}
+            <tr style="height: {(filtered.length - visibleRange.endIdx) * ROW_HEIGHT}px"></tr>
+          {/if}
         </tbody>
       </table>
     </div>
