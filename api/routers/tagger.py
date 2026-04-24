@@ -61,6 +61,7 @@ class FlagRequest(BaseModel):
 async def get_tracks(
     user: UserContext = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
+    limit: int = 200,
 ):
     tracks = tagger.list_tracks()
 
@@ -75,7 +76,7 @@ async def get_tracks(
         key = (track["title"].lower().strip(), track["artist"].lower().strip())
         track["ignore_in_autodj"] = flags.get(key, False)
 
-    return tracks
+    return tracks[:limit] if limit > 0 else tracks
 
 
 @router.post("/tagger/flags")

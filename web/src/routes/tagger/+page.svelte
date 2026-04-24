@@ -57,10 +57,26 @@
   }
 
   $effect(() => {
+    loading = true;
+    // Load first batch immediately (default 200)
     api.getTaggerTracks()
-      .then((t) => (tracks = t))
-      .catch(() => {})
-      .finally(() => (loading = false));
+      .then((t) => {
+        tracks = t;
+        loading = false;
+        // Fetch rest in background without blocking
+        api.getTaggerTracks(999999)
+          .then((allTracks) => {
+            const existing = new Set(tracks.map(tr => tr.file_path));
+            const toAdd = allTracks.filter(tr => !existing.has(tr.file_path));
+            if (toAdd.length > 0) {
+              tracks = [...tracks, ...toAdd];
+            }
+          })
+          .catch(() => {});
+      })
+      .catch(() => {
+        loading = false;
+      });
   });
 
   function sortVal(t: TaggerTrack): string | number | boolean {

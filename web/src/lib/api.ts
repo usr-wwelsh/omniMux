@@ -317,8 +317,9 @@ export const api = {
     return request('/api/playlists/backfill-moods', { method: 'POST' });
   },
 
-  async getTaggerTracks(): Promise<TaggerTrack[]> {
-    return request('/api/tagger/tracks');
+  async getTaggerTracks(limit?: number): Promise<TaggerTrack[]> {
+    const url = limit ? `/api/tagger/tracks?limit=${limit}` : '/api/tagger/tracks';
+    return request(url);
   },
 
   async writeTags(file_paths: string[], tags: Record<string, string>): Promise<{ updated: number; errors: string[] }> {
