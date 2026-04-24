@@ -1,6 +1,11 @@
 <script lang="ts">
   import { api, type DiscoverResult } from '$lib/api';
   import { goto } from '$app/navigation';
+  import { isGuest } from '$lib/auth';
+
+  $effect(() => {
+    if ($isGuest) goto('/');
+  });
 
   let suggestions = $state<DiscoverResult[]>([]);
   let images = $state<Map<string, string>>(new Map());

@@ -1,13 +1,12 @@
 <script lang="ts">
   import { currentTrack, queue, queueIndex, clearQueue, formatTime } from '$lib/stores/player';
-
-  let collapsed = $state(false);
+  import { nowPlayingCollapsed } from '$lib/stores/ui';
 </script>
 
-<aside class="now-playing" class:collapsed>
-  <button class="collapse-btn" onclick={() => (collapsed = !collapsed)} title={collapsed ? 'Expand panel' : 'Collapse panel'}>
+<aside class="now-playing" class:collapsed={$nowPlayingCollapsed}>
+  <button class="collapse-btn" onclick={() => ($nowPlayingCollapsed = !$nowPlayingCollapsed)} title={$nowPlayingCollapsed ? 'Expand panel' : 'Collapse panel'}>
     <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-      {#if collapsed}
+      {#if $nowPlayingCollapsed}
         <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
       {:else}
         <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
