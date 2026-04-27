@@ -13,6 +13,8 @@
   import { initSettingsSync, resetSettingsSync } from '$lib/stores/settingsSync';
   import { showFullscreenPlayer } from '$lib/stores/ui';
   import { theme } from '$lib/stores/theme';
+  import { get } from 'svelte/store';
+  import { togglePlay, seek, setVolume, playNext, playPrev, toggleShuffle, cycleLoop, currentTime, duration, volume } from '$lib/stores/player';
 
   $effect(() => {
     document.documentElement.setAttribute('data-theme', $theme);
@@ -50,6 +52,63 @@
   });
 
   let isLogin = $derived(page.url.pathname === '/login');
+
+  let mutedVolume = $state(0);
+
+  $effect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const editable = (e.target as HTMLElement)?.isContentEditable;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || editable) return;
+
+      switch (e.key) {
+        case ' ':
+          e.preventDefault();
+          togglePlay();
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          if (e.shiftKey) playNext();
+          else seek(Math.min(get(currentTime) + 10, get(duration)));
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          if (e.shiftKey) playPrev();
+          else seek(Math.max(get(currentTime) - 10, 0));
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          setVolume(Math.min(get(volume) + 0.05, 1));
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          setVolume(Math.max(get(volume) - 0.05, 0));
+          break;
+        case 'm':
+        case 'M': {
+          const v = get(volume);
+          if (v > 0) { mutedVolume = v; setVolume(0); }
+          else setVolume(mutedVolume || 1);
+          break;
+        }
+        case 's':
+        case 'S':
+          toggleShuffle();
+          break;
+        case 'r':
+        case 'R':
+          cycleLoop();
+          break;
+        case 'f':
+        case 'F':
+          showFullscreenPlayer.update(v => !v);
+          break;
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  });
 </script>
 
 {#if isLogin}
