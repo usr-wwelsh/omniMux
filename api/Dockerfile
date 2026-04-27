@@ -17,4 +17,4 @@ COPY . .
 
 EXPOSE 8800
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8800"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8800", "--workers", "1", "--no-access-log"]

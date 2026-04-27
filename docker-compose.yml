@@ -7,9 +7,11 @@ services:
       - ./data/navidrome:/data
       - ./data/music:/music
     environment:
-      ND_SCANSCHEDULE: "@every 1m"
-      ND_LOGLEVEL: info
+      ND_SCANSCHEDULE: "@every 1h"
+      ND_LOGLEVEL: warn
       ND_BASEURL: ""
+      ND_IMAGECACHESIZE: "10MB"
+      ND_TRANSCODINGCACHESIZE: "0"
     restart: unless-stopped
 
   omnimux-api:
