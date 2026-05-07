@@ -148,6 +148,7 @@ export interface Song {
   year?: number;
   genre?: string;
   bpm?: number;
+  path?: string;
 }
 
 export const subsonic = {
@@ -222,6 +223,7 @@ export const subsonic = {
         year: s.year,
         genre: s.genre,
         bpm: s.bpm || undefined,
+        path: s.path,
       })),
     };
   },

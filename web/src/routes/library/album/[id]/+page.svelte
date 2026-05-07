@@ -1,6 +1,7 @@
 <script lang="ts">
   import { subsonic, coverArtUrl, type Album, type Song } from '$lib/subsonic';
   import { api, type YouTubeResult } from '$lib/api';
+  import { isGuest } from '$lib/auth';
   import TrackList from '../../../../components/TrackList.svelte';
 
   // --- merge modal state ---
@@ -207,6 +208,125 @@
     const s = seconds % 60;
     return `${m}:${s.toString().padStart(2, '0')}`;
   }
+
+  let reorderMode = $state(false);
+  let reorderedSongs = $state<Song[]>([]);
+  let dragFrom = $state<number | null>(null);
+  let dragOver = $state<number | null>(null);
+  let reorderSaving = $state(false);
+  let reorderResult = $state<string | null>(null);
+
+  let fixing = $state(false);
+  let fixResult = $state<string | null>(null);
+
+  async function fixOrderFromYouTube() {
+    if (!album) return;
+    fixing = true;
+    fixResult = null;
+    try {
+      // Last.fm first (matches MusicBrainz names from AcousticID retag), fall back to YTM
+      let refTitles: string[] = [];
+      const lfmTracks = await api.albumTrackOrder(album.artist, album.name);
+      if (lfmTracks.length) {
+        refTitles = lfmTracks.sort((a, b) => a.rank - b.rank).map((t) => t.title);
+      } else {
+        const ytTracks = await api.getYouTubeAlbumTracks(album.artist, album.name);
+        refTitles = ytTracks.map((t) => t.title);
+      }
+
+      if (!refTitles.length) {
+        fixResult = 'Album not found on Last.fm or YouTube Music.';
+        return;
+      }
+
+      const ordered: Song[] = [];
+      const unmatched = [...songs];
+      for (const refTitle of refTitles) {
+        const refNorm = normalizeTitle(refTitle);
+        const idx = unmatched.findIndex((s) => titlesMatch(normalizeTitle(s.title), refNorm));
+        if (idx !== -1) ordered.push(unmatched.splice(idx, 1)[0]);
+      }
+      ordered.push(...unmatched);
+
+      const tracks = ordered.map((s, i) => ({ title: s.title, track_number: i + 1 }));
+      const r = await api.reorderAlbum(album.name, album.artist, tracks);
+      if (r.updated === 0) {
+        fixResult = `No tracks updated. ${r.errors.join(', ')}`;
+      } else {
+        fixResult = `Fixed order for ${r.updated} track${r.updated !== 1 ? 's' : ''}.`;
+        songs = [...ordered];
+      }
+    } catch (e: any) {
+      fixResult = `Error: ${e.message}`;
+    } finally {
+      fixing = false;
+    }
+  }
+
+  function enterReorder() {
+    reorderedSongs = [...songs];
+    reorderMode = true;
+    reorderResult = null;
+  }
+
+  function cancelReorder() {
+    reorderMode = false;
+    reorderedSongs = [];
+    dragFrom = null;
+    dragOver = null;
+    reorderResult = null;
+  }
+
+  function onDragStart(i: number) {
+    dragFrom = i;
+  }
+
+  function onDragOver(e: DragEvent, i: number) {
+    e.preventDefault();
+    dragOver = i;
+  }
+
+  function onDrop(i: number) {
+    if (dragFrom === null || dragFrom === i) {
+      dragFrom = null;
+      dragOver = null;
+      return;
+    }
+    const arr = [...reorderedSongs];
+    const [item] = arr.splice(dragFrom, 1);
+    arr.splice(i, 0, item);
+    reorderedSongs = arr;
+    dragFrom = null;
+    dragOver = null;
+  }
+
+  function onDragEnd() {
+    dragFrom = null;
+    dragOver = null;
+  }
+
+  async function saveOrder() {
+    if (!album) return;
+    const tracks = reorderedSongs.map((s, i) => ({ title: s.title, track_number: i + 1 }));
+    reorderSaving = true;
+    reorderResult = null;
+    try {
+      const r = await api.reorderAlbum(album.name, album.artist, tracks);
+      if (r.errors.length && r.updated === 0) {
+        reorderResult = `Error: ${r.errors.join(', ')}`;
+      } else {
+        reorderResult = r.errors.length
+          ? `Saved ${r.updated} tracks. Warnings: ${r.errors.join(', ')}`
+          : `Saved order for ${r.updated} track${r.updated !== 1 ? 's' : ''}.`;
+        songs = [...reorderedSongs];
+        reorderMode = false;
+      }
+    } catch (e: any) {
+      reorderResult = `Error: ${e.message}`;
+    } finally {
+      reorderSaving = false;
+    }
+  }
 </script>
 
 <div class="album-page">
@@ -229,15 +349,74 @@
           {#if album.year} &middot; {album.year}{/if}
           &middot; {album.songCount} song{album.songCount !== 1 ? 's' : ''}
         </div>
-        <button class="merge-btn" onclick={openMergeModal} title="Merge duplicate albums into this one">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M17 20.41 18.41 19 15 15.59 13.59 17 17 20.41zM7.5 8H11v5.59L5.59 19 7 20.41l6-6V8h3.5L12 3.5 7.5 8z"/></svg>
-          Merge duplicates
-        </button>
+        {#if !$isGuest}
+          <div class="album-actions">
+            <button class="merge-btn" onclick={openMergeModal} title="Merge duplicate albums into this one">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M17 20.41 18.41 19 15 15.59 13.59 17 17 20.41zM7.5 8H11v5.59L5.59 19 7 20.41l6-6V8h3.5L12 3.5 7.5 8z"/></svg>
+              Merge duplicates
+            </button>
+            {#if songs.length > 1}
+              <button class="merge-btn" onclick={enterReorder}>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M3 15h18v-2H3v2zm0 4h18v-2H3v2zm0-8h18V9H3v2zm0-6v2h18V5H3z"/></svg>
+                Reorder tracks
+              </button>
+              <button class="merge-btn" onclick={fixOrderFromYouTube} disabled={fixing}>
+                {#if fixing}
+                  <svg class="spin" viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                  Fixing…
+                {:else}
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l7.59-7.59L21 8l-9 9z"/></svg>
+                  Fix track order
+                {/if}
+              </button>
+            {/if}
+          </div>
+          {#if fixResult}
+            <p class="fix-result">{fixResult}</p>
+          {/if}
+        {/if}
       </div>
     </div>
 
-    <TrackList {songs} />
+    {#if reorderMode}
+      <div class="reorder-list">
+        {#each reorderedSongs as song, i}
+          <div
+            class="reorder-row"
+            class:reorder-row--dragover={dragOver === i}
+            class:reorder-row--dragging={dragFrom === i}
+            draggable="true"
+            ondragstart={() => onDragStart(i)}
+            ondragover={(e) => onDragOver(e, i)}
+            ondrop={() => onDrop(i)}
+            ondragend={onDragEnd}
+            role="listitem"
+          >
+            <span class="drag-handle">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M11 18c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm-2-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 4c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+            </span>
+            <span class="reorder-num">{i + 1}</span>
+            <div class="reorder-info">
+              <div class="reorder-title">{song.title}</div>
+              <div class="reorder-artist">{song.artist}</div>
+            </div>
+          </div>
+        {/each}
+      </div>
+      <div class="reorder-footer">
+        {#if reorderResult}
+          <span class="reorder-result">{reorderResult}</span>
+        {/if}
+        <button class="modal-cancel" onclick={cancelReorder}>Cancel</button>
+        <button class="modal-confirm" onclick={saveOrder} disabled={reorderSaving}>
+          {reorderSaving ? 'Saving…' : 'Save order'}
+        </button>
+      </div>
+    {:else}
+      <TrackList {songs} />
+    {/if}
 
+    {#if !$isGuest}
     <div class="check-row">
       {#if checking}
         <span class="check-status">
@@ -296,6 +475,7 @@
           {/each}
         </div>
       </div>
+    {/if}
     {/if}
   {/if}
 </div>
@@ -574,11 +754,17 @@
     animation: spin 1s linear infinite;
   }
 
+  .album-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
   .merge-btn {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    margin-top: 10px;
     padding: 5px 12px;
     background: transparent;
     border: 1px solid var(--text-subdued);
@@ -593,6 +779,90 @@
   .merge-btn:hover {
     color: var(--text-primary);
     border-color: var(--text-secondary);
+  }
+
+  .reorder-list {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 8px;
+  }
+
+  .reorder-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 8px 8px 12px;
+    border-radius: 4px;
+    cursor: grab;
+    transition: background 0.1s, opacity 0.15s;
+    border: 1px solid transparent;
+  }
+
+  .reorder-row:hover {
+    background: var(--bg-elevated);
+  }
+
+  .reorder-row--dragover {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+
+  .reorder-row--dragging {
+    opacity: 0.4;
+  }
+
+  .drag-handle {
+    color: var(--text-subdued);
+    flex-shrink: 0;
+    cursor: grab;
+  }
+
+  .reorder-num {
+    width: 24px;
+    text-align: center;
+    font-size: 14px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .reorder-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .reorder-title {
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .reorder-artist {
+    font-size: 12px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .reorder-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0 16px;
+    flex-wrap: wrap;
+  }
+
+  .reorder-result {
+    font-size: 12px;
+    color: var(--text-secondary);
+    flex: 1;
+  }
+
+  .fix-result {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 4px 0 0;
   }
 
   .modal-backdrop {

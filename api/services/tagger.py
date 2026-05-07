@@ -12,6 +12,8 @@ def _read_tags(file_path: Path) -> dict | None:
         audio = MutagenFile(str(file_path), easy=True)
         if audio is None:
             return None
+        raw_track = (audio.get("tracknumber") or [""])[0]
+        track_num = raw_track.split("/")[0] if raw_track else ""
         return {
             "file_path": str(file_path),
             "title": (audio.get("title") or [""])[0],
@@ -20,6 +22,7 @@ def _read_tags(file_path: Path) -> dict | None:
             "album": (audio.get("album") or [""])[0],
             "genre": (audio.get("genre") or [""])[0],
             "year": (audio.get("date") or [""])[0][:4],
+            "tracknumber": track_num,
             "duration": int(audio.info.length) if audio.info else 0,
             "added_date": int(file_path.stat().st_mtime),
         }
@@ -132,6 +135,8 @@ def write_tags(file_paths: list[str], tags: dict) -> tuple[int, list[str]]:
                 audio["genre"] = tags["genre"]
             if tags.get("year"):
                 audio["date"] = tags["year"]
+            if tags.get("tracknumber"):
+                audio["tracknumber"] = tags["tracknumber"]
 
             audio.save()
             updated += 1

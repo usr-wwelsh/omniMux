@@ -5,7 +5,7 @@ from pathlib import Path
 import httpx
 from mutagen.oggopus import OggOpus
 from mutagen.mp3 import MP3
-from mutagen.id3 import ID3, TIT2, TPE1, TPE2, TALB, TDRC, TCON, TBPM, TXXX, APIC
+from mutagen.id3 import ID3, TIT2, TPE1, TPE2, TALB, TDRC, TCON, TBPM, TXXX, APIC, TRCK
 from mutagen.flac import Picture
 
 _FEAT_RE = re.compile(r'\s*(?:feat\.?|ft\.?|featuring|with|,|&)\s+.+$', re.IGNORECASE)
@@ -30,6 +30,7 @@ async def _download_thumbnail(url: str) -> bytes | None:
 
 def _build_metadata(info: dict, mood_result: dict | None) -> dict:
     artist = info.get("artist", info.get("channel", "Unknown"))
+    track_num = info.get("track_number") or info.get("track")
     meta = {
         "title": info.get("title", "Unknown"),
         "artist": artist,
@@ -38,6 +39,7 @@ def _build_metadata(info: dict, mood_result: dict | None) -> dict:
         "date": info.get("upload_date", "")[:4] if info.get("upload_date") else "",
         "genre": info.get("genre", ""),
         "youtube_id": info.get("id", ""),
+        "tracknumber": str(int(track_num)) if track_num else "",
     }
 
     if mood_result:
@@ -86,6 +88,8 @@ def _tag_opus(file_path: str, meta: dict, cover_data: bytes | None) -> None:
     if meta.get("key"):
         audio["key"] = meta["key"]
     audio["youtube_id"] = meta["youtube_id"]
+    if meta.get("tracknumber"):
+        audio["tracknumber"] = meta["tracknumber"]
 
     if cover_data:
         pic = Picture()
@@ -124,6 +128,8 @@ def _tag_mp3(file_path: str, meta: dict, cover_data: bytes | None) -> None:
     if meta.get("key"):
         tags.add(TXXX(encoding=3, desc="KEY", text=meta["key"]))
     tags.add(TXXX(encoding=3, desc="YOUTUBE_ID", text=meta["youtube_id"]))
+    if meta.get("tracknumber"):
+        tags.add(TRCK(encoding=3, text=meta["tracknumber"]))
 
     if cover_data:
         tags.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=cover_data))

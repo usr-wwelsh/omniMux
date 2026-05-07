@@ -372,6 +372,22 @@ export const api = {
     });
   },
 
+  async albumTrackOrder(artist: string, album: string): Promise<Array<{ title: string; rank: number }>> {
+    const params = new URLSearchParams({ artist, album });
+    return request(`/api/tagger/album-track-order?${params}`);
+  },
+
+  async reorderAlbum(
+    album: string,
+    albumartist: string,
+    tracks: Array<{ title: string; track_number: number }>,
+  ): Promise<{ updated: number; errors: string[] }> {
+    return request('/api/tagger/reorder-album', {
+      method: 'POST',
+      body: JSON.stringify({ album, albumartist, tracks }),
+    });
+  },
+
   async getDiscover(limit = 20, fresh = false): Promise<DiscoverResult[]> {
     const params = new URLSearchParams({ limit: String(limit) });
     if (fresh) params.append('fresh', 'true');

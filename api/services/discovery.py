@@ -250,3 +250,23 @@ async def lastfm_similar(artist: str, title: str, limit: int = 10) -> list[dict]
             for sa in similar_artists[:15] if sa.get("name")
         ], return_exceptions=True)
         return [t for result in nested if isinstance(result, list) for t in result]
+
+
+async def lastfm_album_tracks(artist: str, album: str) -> list[dict]:
+    """Return tracks in album order from Last.fm. Each dict has 'title' and 'rank'."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        data = await _lastfm_call(client, {
+            "method": "album.getInfo",
+            "artist": artist,
+            "album": album,
+            "api_key": LASTFM_KEY,
+            "format": "json",
+        })
+    tracks = data.get("album", {}).get("tracks", {}).get("track", [])
+    if not isinstance(tracks, list):
+        tracks = [tracks] if tracks else []
+    return [
+        {"title": t["name"], "rank": int(t.get("@attr", {}).get("rank", i + 1))}
+        for i, t in enumerate(tracks)
+        if t.get("name")
+    ]

@@ -1,6 +1,8 @@
 import asyncio
+import os
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -8,11 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.database import get_db
 from db.models import TrackFlags, TagSnapshot
-from routers.auth import get_current_user, UserContext
-from services.discovery import fingerprint_lookup
+from routers.auth import get_current_user, require_non_guest, UserContext
+from services.discovery import fingerprint_lookup, lastfm_album_tracks
 from services.metadata import _primary_artist
 from services.navidrome import trigger_scan
 from services import tagger
+from services.tagger import MUSIC_DIR
 
 router = APIRouter()
 
@@ -275,6 +278,121 @@ async def merge_albums(
     except Exception:
         pass
     return {"merged": updated, "errors": errors}
+
+
+class ReorderTrack(BaseModel):
+    title: str
+    track_number: int
+
+
+class ReorderAlbumRequest(BaseModel):
+    album: str
+    albumartist: str
+    tracks: list[ReorderTrack]
+
+
+_MB_HEADERS = {"User-Agent": "omniMux/0.1 (omnimux.wwel.sh)"}
+
+
+async def _mb_release_tracks(release_mbid: str) -> list[dict]:
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"https://musicbrainz.org/ws/2/release/{release_mbid}",
+                params={"inc": "recordings", "fmt": "json"},
+                headers=_MB_HEADERS,
+            )
+        release = resp.json()
+        tracks = []
+        for medium in release.get("media", []):
+            offset = medium.get("position", 1) - 1
+            for t in medium.get("tracks", []):
+                pos = t.get("position", 0) + offset * 1000
+                tracks.append({"title": t.get("title", ""), "rank": pos})
+        return tracks
+    except Exception:
+        return []
+
+
+@router.get("/tagger/album-track-order")
+async def album_track_order(
+    artist: str,
+    album: str,
+    user: UserContext = Depends(require_non_guest),
+):
+    # Find a local file for this album to fingerprint
+    all_tracks = await asyncio.to_thread(tagger.list_tracks)
+    album_lower = album.lower().strip()
+    artist_lower = artist.lower().strip()
+    local_file = next((
+        t["file_path"] for t in all_tracks
+        if t.get("album", "").lower().strip() == album_lower
+        and (
+            t.get("albumartist", "").lower().strip() == artist_lower
+            or t.get("artist", "").lower().strip() == artist_lower
+        )
+    ), None)
+
+    if local_file:
+        meta = await fingerprint_lookup(local_file)
+        if meta and meta.get("release_mbid"):
+            tracks = await _mb_release_tracks(meta["release_mbid"])
+            if tracks:
+                return tracks
+
+    # Fall back to Last.fm text search
+    return await lastfm_album_tracks(artist, album)
+
+
+@router.post("/tagger/reorder-album")
+async def reorder_album(
+    body: ReorderAlbumRequest,
+    user: UserContext = Depends(require_non_guest),
+    session: AsyncSession = Depends(get_db),
+):
+    all_tracks = await asyncio.to_thread(tagger.list_tracks)
+    album_lower = body.album.lower().strip()
+    albumartist_lower = body.albumartist.lower().strip()
+
+    # Index local tracks by title for this album
+    album_files: dict[str, str] = {}
+    for t in all_tracks:
+        t_album = t.get("album", "").lower().strip()
+        t_aa = t.get("albumartist", "").lower().strip()
+        t_ar = t.get("artist", "").lower().strip()
+        if t_album == album_lower and (t_aa == albumartist_lower or t_ar == albumartist_lower):
+            album_files[t["title"].lower().strip()] = t["file_path"]
+
+    if not album_files:
+        return {"updated": 0, "errors": [f"No local tracks found for album '{body.album}'"]}
+
+    file_map: dict[str, str] = {}
+    unmatched: list[str] = []
+    for item in body.tracks:
+        fp = album_files.get(item.title.lower().strip())
+        if fp:
+            file_map[fp] = str(item.track_number)
+        else:
+            unmatched.append(item.title)
+
+    if not file_map:
+        return {"updated": 0, "errors": ["No tracks matched"]}
+
+    await _save_snapshot(session, list(file_map.keys()))
+    updated = 0
+    errors: list[str] = []
+    for fp, num in file_map.items():
+        u, e = tagger.write_tags([fp], {"tracknumber": num})
+        updated += u
+        errors.extend(e)
+    if unmatched:
+        errors.append(f"Unmatched: {', '.join(unmatched)}")
+
+    try:
+        await trigger_scan(user.username, user.password)
+    except Exception:
+        pass
+    return {"updated": updated, "errors": errors}
 
 
 @router.post("/tagger/delete")
