@@ -30,7 +30,11 @@ async def _download_thumbnail(url: str) -> bytes | None:
 
 def _build_metadata(info: dict, mood_result: dict | None) -> dict:
     artist = info.get("artist", info.get("channel", "Unknown"))
-    track_num = info.get("track_number") or info.get("track")
+    track_num = info.get("track_number")
+    try:
+        tracknumber = str(int(track_num)) if track_num else ""
+    except (ValueError, TypeError):
+        tracknumber = ""
     meta = {
         "title": info.get("title", "Unknown"),
         "artist": artist,
@@ -39,7 +43,7 @@ def _build_metadata(info: dict, mood_result: dict | None) -> dict:
         "date": info.get("upload_date", "")[:4] if info.get("upload_date") else "",
         "genre": info.get("genre", ""),
         "youtube_id": info.get("id", ""),
-        "tracknumber": str(int(track_num)) if track_num else "",
+        "tracknumber": tracknumber,
     }
 
     if mood_result:
