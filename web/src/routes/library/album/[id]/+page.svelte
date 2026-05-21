@@ -170,6 +170,7 @@
         downloadingIds = new Map([...downloadingIds, [result.youtube_id, resp.download_id]]);
         pollDownload(result.youtube_id, resp.download_id);
       }
+      autoFixArmed = true;
     } catch {
       // ignore
     }
@@ -178,9 +179,10 @@
   async function cacheAll() {
     for (const track of missingTracks) {
       if (!cachedIds.has(track.youtube_id) && !downloadingIds.has(track.youtube_id)) {
-        cacheTrack(track);
+        await cacheTrack(track);
       }
     }
+    maybeAutoFixOrder();
   }
 
   async function pollDownload(ytId: string, dlId: number) {
@@ -192,10 +194,12 @@
           downloadingIds.delete(ytId);
           downloadingIds = new Map(downloadingIds);
           cachedIds = new Set([...cachedIds, ytId]);
+          maybeAutoFixOrder();
         } else if (status.status === 'failed') {
           clearInterval(interval);
           downloadingIds.delete(ytId);
           downloadingIds = new Map(downloadingIds);
+          maybeAutoFixOrder();
         }
       } catch {
         clearInterval(interval);
@@ -218,6 +222,42 @@
 
   let fixing = $state(false);
   let fixResult = $state<string | null>(null);
+  let autoFixArmed = $state(false);
+
+  async function maybeAutoFixOrder() {
+    if (!autoFixArmed || fixing) return;
+    if (downloadingIds.size > 0) return;
+    autoFixArmed = false;
+    await autoFixOrder();
+  }
+
+  async function autoFixOrder() {
+    if (!album) return;
+    fixing = true;
+    fixResult = null;
+    try {
+      let refTitles: string[] = [];
+      const lfmTracks = await api.albumTrackOrder(album.artist, album.name);
+      if (lfmTracks.length) {
+        refTitles = lfmTracks.sort((a, b) => a.rank - b.rank).map((t) => t.title);
+      } else {
+        const ytTracks = await api.getYouTubeAlbumTracks(album.artist, album.name);
+        refTitles = ytTracks.map((t) => t.title);
+      }
+      if (!refTitles.length) return;
+      const tracks = refTitles.map((title, i) => ({ title, track_number: i + 1 }));
+      const r = await api.reorderAlbum(album.name, album.artist, tracks);
+      if (r.updated > 0) {
+        fixResult = `Auto-fixed order for ${r.updated} track${r.updated !== 1 ? 's' : ''}.`;
+        // Refresh once Navidrome has had a moment to re-scan
+        setTimeout(() => album && loadAlbum(album.id), 2000);
+      }
+    } catch {
+      // silent — user can still hit "Fix track order" manually
+    } finally {
+      fixing = false;
+    }
+  }
 
   async function fixOrderFromYouTube() {
     if (!album) return;
