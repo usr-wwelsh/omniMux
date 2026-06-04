@@ -74,6 +74,19 @@ class TagSnapshot(Base):
     snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class KnownDevice(Base):
+    __tablename__ = "known_devices"
+
+    username: Mapped[str] = mapped_column(String(200), primary_key=True)
+    device_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    device_name: Mapped[str] = mapped_column(String(200), default="")
+    device_type: Mapped[str] = mapped_column(String(20), default="unknown")  # phone/tablet/laptop/desktop/unknown
+    os: Mapped[str] = mapped_column(String(40), default="")
+    browser: Mapped[str] = mapped_column(String(40), default="")
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class TrackMapping(Base):
     __tablename__ = "track_mappings"
 

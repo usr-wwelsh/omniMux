@@ -7,7 +7,7 @@
     djPersonality, PERSONALITY_CONFIGS, type DJPersonality,
   } from '$lib/stores/autodj';
   import { isGuest } from '$lib/auth';
-  import { api } from '$lib/api';
+  import { api, type KnownDevice } from '$lib/api';
 
   const themes: { value: Theme; label: string; description: string }[] = [
     { value: 'spotify', label: 'Spotify', description: 'Dark green — the default look' },
@@ -31,12 +31,43 @@
   let guestToggling = $state(false);
   let guestError = $state('');
 
+  let knownDevices = $state<KnownDevice[]>([]);
+  let thisDeviceId = $state('');
+
+  async function loadDevices() {
+    try {
+      knownDevices = await api.getKnownDevices();
+    } catch {
+      knownDevices = [];
+    }
+  }
+
   onMount(async () => {
     if (!$isGuest) {
       const status = await api.guestStatus();
       guestEnabled = status.enabled;
     }
+    thisDeviceId = localStorage.getItem('omnimux-device-id') || '';
+    loadDevices();
   });
+
+  async function forget(device_id: string) {
+    await api.forgetDevice(device_id);
+    knownDevices = knownDevices.filter((d) => d.device_id !== device_id);
+  }
+
+  function relativeTime(iso: string): string {
+    const then = new Date(iso).getTime();
+    const secs = Math.max(0, Math.floor((Date.now() - then) / 1000));
+    if (secs < 60) return 'just now';
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 30) return `${days}d ago`;
+    return new Date(iso).toLocaleDateString();
+  }
 
   async function toggleGuest() {
     guestToggling = true;
@@ -182,6 +213,51 @@
         <span class="slider-val">{$ambientIdleMinutes === 0 ? 'Disabled' : `${$ambientIdleMinutes} min`}</span>
       </div>
     </div>
+  </section>
+
+  <section class="settings-section">
+    <h2 class="section-title">Devices</h2>
+    <div class="setting-info" style="margin-bottom: 16px;">
+      <span class="setting-desc">Devices that have connected to your account. Switching networks no longer drops playback — your session and queue follow you across devices.</span>
+    </div>
+
+    {#if knownDevices.length === 0}
+      <p class="empty-text">No devices yet.</p>
+    {:else}
+      <ul class="device-list">
+        {#each knownDevices as device (device.device_id)}
+          <li class="device-row">
+            <span class="device-icon" class:active={device.is_active}>
+              {#if device.device_type === 'phone'}
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>
+              {:else if device.device_type === 'tablet'}
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M21 4H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h18c1.1 0 1.99-.9 1.99-2L23 6c0-1.1-.9-2-2-2zm-2 14H5V6h14v12z"/></svg>
+              {:else if device.device_type === 'laptop'}
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M20 18c1.1 0 1.99-.9 1.99-2L22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2H0v2h24v-2h-4zM4 6h16v10H4V6z"/></svg>
+              {:else if device.device_type === 'desktop'}
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M21 2H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h7v2H8v2h8v-2h-2v-2h7c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H3V4h18v12z"/></svg>
+              {:else}
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
+              {/if}
+            </span>
+            <div class="device-meta">
+              <div class="device-title">
+                {device.device_name}
+                {#if device.device_id === thisDeviceId}<span class="badge this">This device</span>{/if}
+                {#if device.is_active}<span class="badge active">Active now</span>{/if}
+              </div>
+              <div class="device-sub">
+                {[device.os, device.browser].filter(Boolean).join(' · ')}
+                {#if !device.is_active} · seen {relativeTime(device.last_seen)}{/if}
+              </div>
+            </div>
+            {#if device.device_id !== thisDeviceId}
+              <button class="forget-btn" onclick={() => forget(device.device_id)}>Forget</button>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+    {/if}
   </section>
 
   {#if !$isGuest}
@@ -436,6 +512,92 @@
     margin-top: 8px;
     font-size: 13px;
     color: var(--danger);
+  }
+
+  .empty-text {
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .device-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .device-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: var(--bg-elevated);
+  }
+
+  .device-icon {
+    color: var(--text-subdued);
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  .device-icon.active {
+    color: var(--accent);
+  }
+
+  .device-meta {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .device-title {
+    font-size: 15px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .device-sub {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+  }
+
+  .badge {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 2px 7px;
+    border-radius: 10px;
+  }
+
+  .badge.this {
+    background: var(--bg-highlight);
+    color: var(--text-secondary);
+  }
+
+  .badge.active {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    color: var(--accent);
+  }
+
+  .forget-btn {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .forget-btn:hover {
+    color: var(--danger);
+    border-color: var(--danger);
   }
 
   code {

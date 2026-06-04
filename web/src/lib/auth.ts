@@ -8,7 +8,7 @@ interface AuthState {
   role: string;
 }
 
-const stored = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('omnimux_auth') : null;
+const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('omnimux_auth') : null;
 const initial: AuthState = stored
   ? { role: 'user', ...JSON.parse(stored) }
   : { authenticated: false, token: '', username: '', password: '', role: 'user' };
@@ -16,8 +16,8 @@ const initial: AuthState = stored
 export const auth = writable<AuthState>(initial);
 
 auth.subscribe((value) => {
-  if (typeof sessionStorage !== 'undefined') {
-    sessionStorage.setItem('omnimux_auth', JSON.stringify(value));
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('omnimux_auth', JSON.stringify(value));
   }
 });
 
@@ -29,7 +29,7 @@ export function login(token: string, username: string, password: string, role = 
 
 export function logout() {
   auth.set({ authenticated: false, token: '', username: '', password: '', role: 'user' });
-  if (typeof sessionStorage !== 'undefined') {
-    sessionStorage.removeItem('omnimux_auth');
+  if (typeof localStorage !== 'undefined') {
+    localStorage.removeItem('omnimux_auth');
   }
 }

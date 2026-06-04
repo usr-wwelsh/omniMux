@@ -66,6 +66,13 @@ export function warmUpCrossfadeAudio() {
   crossfadeAudio.pause();
 }
 
+// True when the user/queue intends audio to be playing here. Distinct from the
+// `isPlaying` store, which flips false on transient stalls (e.g. a network drop).
+// Used to decide whether to auto-recover playback once connectivity returns.
+let _playIntent = false;
+let _recovering = false;
+let _recoverTimer: ReturnType<typeof setTimeout> | null = null;
+
 let _pushTimer: ReturnType<typeof setTimeout> | null = null;
 let _crossfadeSafetyTimer: ReturnType<typeof setTimeout> | null = null;
 let _artworkFetchToken = 0; // incremented on each track change to cancel stale artwork fetches
@@ -226,10 +233,11 @@ function setupMediaSession() {
   navigator.mediaSession.setActionHandler('play', () => {
     const myId = get(localDeviceId);
     if (myId) activeDeviceId.set(myId);
+    _playIntent = true;
     getAudio().play();
     schedulePushQueue(myId || activeOrMe());
   });
-  navigator.mediaSession.setActionHandler('pause', () => getAudio().pause());
+  navigator.mediaSession.setActionHandler('pause', () => { _playIntent = false; getAudio().pause(); });
   navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
   navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
   navigator.mediaSession.setActionHandler('seekto', (details) => {
@@ -281,9 +289,52 @@ currentTrack.subscribe((t) => {
   subsonic.scrobble(t.id, false).catch(() => {});
 });
 
+// Re-establish the audio stream after a network interruption (e.g. wifi→cell).
+// The in-flight HTTP connection to Navidrome dies on an interface change and the
+// <audio> element won't recover on its own, so we re-mint the stream URL (fresh
+// salt) and resume from the last known position.
+export async function recoverPlayback() {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  if (_recovering || _isCrossfading || !_playIntent) return;
+  if (!isThisDeviceActive()) return;
+  const track = get(currentTrack);
+  if (!track) return;
+  const a = getAudio();
+  // Already playing fine — nothing to recover.
+  if (!a.paused && a.readyState >= 3) return;
+
+  _recovering = true;
+  const pos = get(currentTime);
+  try {
+    const fresh = await streamUrl(track.id);
+    a.src = fresh;
+    a.volume = get(volume);
+    const resume = () => {
+      if (pos > 0 && Math.abs(a.currentTime - pos) > 1) {
+        try { a.currentTime = pos; } catch {}
+      }
+      a.play().catch(() => {});
+      _recovering = false;
+    };
+    a.addEventListener('loadedmetadata', resume, { once: true });
+    a.load();
+  } catch {
+    _recovering = false;
+  }
+}
+
+function scheduleRecover(delay = 500) {
+  if (_recoverTimer) clearTimeout(_recoverTimer);
+  _recoverTimer = setTimeout(() => { _recoverTimer = null; recoverPlayback(); }, delay);
+}
+
 export function getAudio(): HTMLAudioElement {
   if (!audio && typeof window !== 'undefined') {
     audio = new Audio();
+    audio.addEventListener('error', () => { if (_playIntent) scheduleRecover(); });
+    audio.addEventListener('stalled', () => {
+      if (_playIntent && typeof navigator !== 'undefined' && navigator.onLine) scheduleRecover(1500);
+    });
     audio.addEventListener('timeupdate', () => {
       currentTime.set(audio!.currentTime);
       if ('mediaSession' in navigator && audio!.duration) {
@@ -345,6 +396,7 @@ export function playTrack(track: Track) {
   currentTrack.set(track);
   updateMediaSession(track);
   if (track.streamUrl) {
+    _playIntent = true;
     a.src = track.streamUrl;
     a.volume = get(volume);
     a.play();
@@ -396,9 +448,11 @@ export function togglePlay() {
     // Pressing play is an explicit intent to play on this device — claim active
     const myId = get(localDeviceId);
     if (myId) activeDeviceId.set(myId);
+    _playIntent = true;
     a.play();
     schedulePushQueue(myId || activeOrMe());
   } else {
+    _playIntent = false;
     a.pause();
   }
 }
@@ -408,6 +462,7 @@ export function claimPlayback() {
   const myId = get(localDeviceId);
   if (!myId) return;
   activeDeviceId.set(myId);
+  _playIntent = true;
   const a = getAudio();
   if (a.src) {
     a.volume = get(volume);
@@ -486,7 +541,7 @@ export function playNext() {
   } else if (loopMode === 'all') {
     playOrRoute(q[0], 0);
   } else {
-    if (active) isPlaying.set(false);
+    if (active) { _playIntent = false; isPlaying.set(false); }
   }
 }
 

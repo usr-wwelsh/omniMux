@@ -2,11 +2,16 @@ import asyncio
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.database import get_db
+from db.models import KnownDevice, utcnow
 from routers.auth import get_current_user, UserContext
 
 logger = logging.getLogger(__name__)
@@ -24,6 +29,11 @@ _sessions_lock = asyncio.Lock()
 # Server-side shared queue: {username: {tracks, index, active_device_id, queue_version}}
 _queues: dict[str, dict] = {}
 _queues_lock = asyncio.Lock()
+
+# Throttle known-device DB writes — heartbeats fire every 1–5s per device.
+# {(username, device_id): monotonic_ts of last write}
+_known_device_writes: dict[tuple[str, str], float] = {}
+KNOWN_DEVICE_WRITE_INTERVAL = 30  # seconds
 
 
 def _load_queue_from_disk() -> None:
@@ -63,6 +73,9 @@ class TrackInfo(BaseModel):
 class DeviceHeartbeat(BaseModel):
     device_id: str
     device_name: str
+    device_type: str = "unknown"
+    os: str = ""
+    browser: str = ""
     track: TrackInfo | None = None
     is_playing: bool = False
     current_time: float = 0
@@ -82,6 +95,7 @@ class DeviceSession(BaseModel):
 async def heartbeat(
     body: DeviceHeartbeat,
     user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     async with _sessions_lock:
         if user.username not in _sessions:
@@ -94,6 +108,33 @@ async def heartbeat(
             "current_time": body.current_time,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
+
+    # Persist the known device, throttled so we don't write on every heartbeat.
+    key = (user.username, body.device_id)
+    now_mono = time.monotonic()
+    if now_mono - _known_device_writes.get(key, 0) >= KNOWN_DEVICE_WRITE_INTERVAL:
+        _known_device_writes[key] = now_mono
+        try:
+            row = await db.get(KnownDevice, (user.username, body.device_id))
+            if row:
+                row.device_name = body.device_name
+                row.device_type = body.device_type
+                row.os = body.os
+                row.browser = body.browser
+                row.last_seen = utcnow()
+            else:
+                db.add(KnownDevice(
+                    username=user.username,
+                    device_id=body.device_id,
+                    device_name=body.device_name,
+                    device_type=body.device_type,
+                    os=body.os,
+                    browser=body.browser,
+                ))
+            await db.commit()
+        except Exception as e:
+            logger.warning(f"[omniMux] Could not persist known device: {e}")
+
     return {"ok": True}
 
 
@@ -197,3 +238,66 @@ async def list_devices(
             is_reconnecting=is_reconnecting,
         ))
     return result
+
+
+class KnownDeviceInfo(BaseModel):
+    device_id: str
+    device_name: str
+    device_type: str
+    os: str
+    browser: str
+    first_seen: str
+    last_seen: str
+    is_active: bool = False
+
+
+async def _active_device_ids(username: str) -> set[str]:
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=SESSION_TTL_SECONDS)
+    async with _sessions_lock:
+        sessions = dict(_sessions.get(username, {}))
+    return {
+        s["device_id"]
+        for s in sessions.values()
+        if datetime.fromisoformat(s["updated_at"]) > cutoff
+    }
+
+
+@router.get("/devices/known", response_model=list[KnownDeviceInfo])
+async def list_known_devices(
+    user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(KnownDevice)
+        .where(KnownDevice.username == user.username)
+        .order_by(KnownDevice.last_seen.desc())
+    )
+    rows = result.scalars().all()
+    active = await _active_device_ids(user.username)
+    return [
+        KnownDeviceInfo(
+            device_id=d.device_id,
+            device_name=d.device_name,
+            device_type=d.device_type,
+            os=d.os,
+            browser=d.browser,
+            first_seen=d.first_seen.isoformat(),
+            last_seen=d.last_seen.isoformat(),
+            is_active=d.device_id in active,
+        )
+        for d in rows
+    ]
+
+
+@router.delete("/devices/known/{device_id}")
+async def forget_device(
+    device_id: str,
+    user: UserContext = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    row = await db.get(KnownDevice, (user.username, device_id))
+    if row:
+        await db.delete(row)
+        await db.commit()
+    _known_device_writes.pop((user.username, device_id), None)
+    return {"ok": True}

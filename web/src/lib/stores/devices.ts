@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { api, type DeviceSession } from '$lib/api';
-import { currentTrack, isPlaying, currentTime, playTrack, seek, localDeviceId, activeDeviceId, applyServerQueueState, type Track } from './player';
+import { currentTrack, isPlaying, currentTime, playTrack, seek, localDeviceId, activeDeviceId, applyServerQueueState, recoverPlayback, type Track } from './player';
 import { artModeActive } from './ui';
 import { autoDJActive } from './autodj';
 import { streamUrl } from '$lib/subsonic';
@@ -26,16 +26,46 @@ function getOrCreateDeviceId(): string {
   return id;
 }
 
-function getDeviceName(): string {
-  const ua = navigator.userAgent;
-  if (/iPhone/.test(ua)) return 'iPhone';
-  if (/iPad/.test(ua)) return 'iPad';
-  if (/Android/.test(ua)) return 'Android';
-  const platform = navigator.platform || '';
-  if (/Mac/.test(platform)) return 'Mac';
-  if (/Win/.test(platform)) return 'Windows';
-  if (/Linux/.test(platform)) return 'Linux';
+export type DeviceType = 'phone' | 'tablet' | 'laptop' | 'desktop' | 'unknown';
+
+export interface DeviceInfo {
+  name: string;
+  type: DeviceType;
+  os: string;
+  browser: string;
+}
+
+function detectBrowser(ua: string): string {
+  if (/Edg\//.test(ua)) return 'Edge';
+  if (/OPR\/|Opera/.test(ua)) return 'Opera';
+  if (/Firefox\//.test(ua)) return 'Firefox';
+  if (/Chrome\//.test(ua)) return 'Chrome';
+  if (/Safari\//.test(ua)) return 'Safari';
   return 'Browser';
+}
+
+// Browsers can't report an exact device model — iOS only ever says "iPhone", and
+// laptop-vs-desktop has no reliable API. We classify by OS + form factor heuristics
+// and pair it with the browser name for a recognizable label.
+function detectDevice(): DeviceInfo {
+  const ua = navigator.userAgent;
+  const touch = navigator.maxTouchPoints || 0;
+  const browser = detectBrowser(ua);
+
+  if (/iPhone/.test(ua)) return { name: 'iPhone', type: 'phone', os: 'iOS', browser };
+  if (/iPad/.test(ua)) return { name: 'iPad', type: 'tablet', os: 'iPadOS', browser };
+  if (/Android/.test(ua)) {
+    const phone = /Mobile/.test(ua);
+    return { name: phone ? 'Android Phone' : 'Android Tablet', type: phone ? 'phone' : 'tablet', os: 'Android', browser };
+  }
+  if (/Macintosh/.test(ua)) {
+    // iPadOS in desktop mode reports as Macintosh but exposes touch points.
+    if (touch > 1) return { name: 'iPad', type: 'tablet', os: 'iPadOS', browser };
+    return { name: 'Mac', type: 'laptop', os: 'macOS', browser };
+  }
+  if (/Windows/.test(ua)) return { name: 'Windows PC', type: 'desktop', os: 'Windows', browser };
+  if (/Linux/.test(ua)) return { name: 'Linux PC', type: 'desktop', os: 'Linux', browser };
+  return { name: 'Browser', type: 'unknown', os: '', browser };
 }
 
 export const otherDevices = writable<DeviceSession[]>([]);
@@ -49,10 +79,14 @@ let myDeviceId = '';
 
 async function sendHeartbeat() {
   const track = get(currentTrack);
+  const info = detectDevice();
   try {
     await api.deviceHeartbeat({
       device_id: myDeviceId,
-      device_name: getDeviceName(),
+      device_name: info.name,
+      device_type: info.type,
+      os: info.os,
+      browser: info.browser,
       track: track
         ? { id: track.id, title: track.title, artist: track.artist, album: track.album, cover_url: track.coverUrl ?? null, duration: track.duration }
         : null,
@@ -113,6 +147,9 @@ function restartTimers(slow: boolean) {
   queuePollTimer = setInterval(pollQueue, ms);
 }
 
+// Re-establish audio playback as soon as the network comes back (wifi→cell, etc.).
+const onOnline = () => recoverPlayback();
+
 export function startDeviceSync() {
   myDeviceId = getOrCreateDeviceId();
   localDeviceId.set(myDeviceId);
@@ -123,6 +160,7 @@ export function startDeviceSync() {
   artModeUnsubscribe = artModeActive.subscribe((active) => restartTimers(active));
   // Issue 6: also restart timers when Auto DJ toggles so art-mode slowdown is overridden
   autoDJUnsubscribe = autoDJActive.subscribe(() => restartTimers(get(artModeActive)));
+  if (typeof window !== 'undefined') window.addEventListener('online', onOnline);
 }
 
 export function stopDeviceSync() {
@@ -131,6 +169,7 @@ export function stopDeviceSync() {
   if (queuePollTimer) clearInterval(queuePollTimer);
   artModeUnsubscribe?.();
   autoDJUnsubscribe?.();
+  if (typeof window !== 'undefined') window.removeEventListener('online', onOnline);
 }
 
 export async function listenHere(session: DeviceSession) {

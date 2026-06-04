@@ -113,9 +113,23 @@ export interface DeviceSession {
 export interface DeviceHeartbeat {
   device_id: string;
   device_name: string;
+  device_type?: string;
+  os?: string;
+  browser?: string;
   track: DeviceTrackInfo | null;
   is_playing: boolean;
   current_time: number;
+}
+
+export interface KnownDevice {
+  device_id: string;
+  device_name: string;
+  device_type: string;
+  os: string;
+  browser: string;
+  first_seen: string;
+  last_seen: string;
+  is_active: boolean;
 }
 
 export interface QueueTrack {
@@ -261,6 +275,14 @@ export const api = {
 
   async getDevices(): Promise<DeviceSession[]> {
     return request('/api/devices');
+  },
+
+  async getKnownDevices(): Promise<KnownDevice[]> {
+    return request('/api/devices/known');
+  },
+
+  async forgetDevice(device_id: string): Promise<void> {
+    return request(`/api/devices/known/${encodeURIComponent(device_id)}`, { method: 'DELETE' });
   },
 
   async getQueue(): Promise<QueueState> {
