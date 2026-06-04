@@ -62,6 +62,27 @@ async def trigger_scan(username: str, password: str) -> None:
         await client.get(f"{NAVIDROME_URL}/rest/startScan.view", params=params)
 
 
+async def get_frequent_albums(username: str, password: str, count: int = 20) -> list[tuple[str, str]]:
+    """Return the user's most-played albums as (album, artist) tuples, most-played first.
+
+    Driven by Navidrome's local play counts (populated by scrobbles)."""
+    params = _subsonic_params(username, password)
+    params["type"] = "frequent"
+    params["size"] = str(count)
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"{NAVIDROME_URL}/rest/getAlbumList2.view", params=params)
+            if resp.status_code != 200:
+                return []
+            sr = resp.json().get("subsonic-response", {})
+            if sr.get("status") != "ok":
+                return []
+            albums = sr.get("albumList2", {}).get("album", [])
+            return [(a.get("name", ""), a.get("artist", "")) for a in albums if a.get("artist")]
+    except Exception:
+        return []
+
+
 async def search_song(title: str, artist: str, username: str, password: str) -> str | None:
     params = _subsonic_params(username, password)
     params["query"] = title

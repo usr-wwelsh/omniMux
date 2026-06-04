@@ -6,10 +6,12 @@
   import { addToQueue, currentTrack } from '$lib/stores/player';
   import { streamUrl } from '$lib/subsonic';
   import { autoDJActive, toggleAutoDJ } from '$lib/stores/autodj';
+  import { isGuest } from '$lib/auth';
 
   let randomAlbums = $state<Album[]>([]);
   let randomSongs = $state<Song[]>([]);
   let moodPlaylists = $state<Playlist[]>([]);
+  let recentAlbums = $state<Album[]>([]);
   let loading = $state(true);
 
   const activeDevices = $derived($otherDevices.filter((d) => d.track && d.is_playing));
@@ -21,14 +23,16 @@
   async function loadHome() {
     loading = true;
     try {
-      const [albums, songs, playlists] = await Promise.all([
+      const [albums, songs, playlists, recent] = await Promise.all([
         subsonic.getRandomAlbums(12),
         subsonic.getRandomSongs(10),
         subsonic.getPlaylists(),
+        $isGuest ? Promise.resolve([]) : subsonic.getRecentlyPlayed(6),
       ]);
       randomAlbums = albums;
       randomSongs = songs;
       moodPlaylists = playlists.filter((p) => p.name.startsWith('Mood: '));
+      recentAlbums = recent;
     } catch {
       // Library may be empty
     } finally {
@@ -84,6 +88,20 @@
   {#if loading}
     <p class="loading-text">Loading...</p>
   {:else}
+    {#if recentAlbums.length > 0}
+      <section class="section">
+        <div class="section-header">
+          <h2 class="section-title">Recently played</h2>
+          <a href="/history" class="see-all">History →</a>
+        </div>
+        <div class="album-grid">
+          {#each recentAlbums as album}
+            <AlbumCard {album} />
+          {/each}
+        </div>
+      </section>
+    {/if}
+
     {#if randomAlbums.length > 0}
       <section class="section">
         <div class="section-header">
@@ -210,6 +228,18 @@
   .section-title {
     font-size: 22px;
     font-weight: 700;
+  }
+
+  .see-all {
+    margin-left: auto;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-subdued);
+    transition: color 0.15s;
+  }
+
+  .see-all:hover {
+    color: var(--text-primary);
   }
 
   .refresh-btn {

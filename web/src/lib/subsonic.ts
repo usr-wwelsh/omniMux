@@ -303,6 +303,32 @@ export const subsonic = {
     }));
   },
 
+  // Records a play in Navidrome's local DB. submission=false → "now playing",
+  // submission=true → counts the play (increments playCount / sets last-played).
+  async scrobble(id: string, submission: boolean): Promise<void> {
+    await subsonicGet('scrobble.view', {
+      id,
+      submission: submission ? 'true' : 'false',
+      time: Date.now().toString(),
+    });
+  },
+
+  async getRecentlyPlayed(count = 20): Promise<Album[]> {
+    const data = await subsonicGet('getAlbumList2.view', { type: 'recent', size: count.toString() });
+    return (data.albumList2?.album || []).map((al: any) => ({
+      id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
+      coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
+    }));
+  },
+
+  async getMostPlayed(count = 20): Promise<Album[]> {
+    const data = await subsonicGet('getAlbumList2.view', { type: 'frequent', size: count.toString() });
+    return (data.albumList2?.album || []).map((al: any) => ({
+      id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
+      coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
+    }));
+  },
+
   async getPlaylists(): Promise<Playlist[]> {
     const data = await subsonicGet('getPlaylists.view');
     return (data.playlists?.playlist || []).map((p: any) => ({

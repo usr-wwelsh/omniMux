@@ -1,5 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
-import { streamUrl, coverArtUrl, fetchItunesArtwork, type Song } from '../subsonic';
+import { streamUrl, coverArtUrl, fetchItunesArtwork, subsonic, type Song } from '../subsonic';
+import { auth } from '../auth';
 import { api } from '../api';
 
 export interface DJMeta {
@@ -244,6 +245,42 @@ function setupMediaSession() {
   });
 }
 
+// ── Scrobbling ──────────────────────────────────────────────────────────────
+// Records plays in Navidrome's local DB (drives the history page + discover
+// weighting). On by default; skipped for the shared guest account and on
+// devices that aren't the active audio source.
+let _scrobbleTrackId: string | null = null;
+let _scrobbledThisTrack = false;
+let _nowPlayingTrackId: string | null = null;
+
+function scrobbleEnabled(): boolean {
+  return isThisDeviceActive() && get(auth).role !== 'guest';
+}
+
+// Counts the play once the track passes the standard threshold (50% or 4 min).
+function maybeScrobble(ct: number, dur: number) {
+  if (!dur || dur <= 0 || !scrobbleEnabled()) return;
+  const track = get(currentTrack);
+  if (!track) return;
+  if (track.id !== _scrobbleTrackId) {
+    _scrobbleTrackId = track.id;
+    _scrobbledThisTrack = false;
+  }
+  if (_scrobbledThisTrack) return;
+  if (ct >= Math.min(dur * 0.5, 240)) {
+    _scrobbledThisTrack = true;
+    subsonic.scrobble(track.id, true).catch(() => {});
+  }
+}
+
+// "Now playing" ping on each new track.
+currentTrack.subscribe((t) => {
+  if (!t || t.id === _nowPlayingTrackId) return;
+  _nowPlayingTrackId = t.id;
+  if (!scrobbleEnabled()) return;
+  subsonic.scrobble(t.id, false).catch(() => {});
+});
+
 export function getAudio(): HTMLAudioElement {
   if (!audio && typeof window !== 'undefined') {
     audio = new Audio();
@@ -257,6 +294,7 @@ export function getAudio(): HTMLAudioElement {
         });
       }
       _crossfadeChecker?.(audio!.currentTime, audio!.duration);
+      maybeScrobble(audio!.currentTime, audio!.duration);
     });
     audio.addEventListener('durationchange', () => duration.set(audio!.duration || 0));
     audio.addEventListener('ended', () => { if (!_isCrossfading) playNext(); });

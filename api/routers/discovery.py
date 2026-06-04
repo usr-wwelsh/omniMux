@@ -11,6 +11,7 @@ from db.models import Download
 from routers.auth import get_current_user, UserContext
 from services import cache
 from services.discovery import lastfm_similar, enrich_images
+from services.navidrome import get_frequent_albums
 
 router = APIRouter()
 
@@ -60,18 +61,38 @@ async def discover(
         rows[third : 2 * third] if third > 0 else [],
         rows[2 * third :] if third > 0 else rows,
     ]
-    seeds = []
+    # Random era-spanning seeds for breadth. (title, artist, is_favorite)
+    seeds: list[tuple[str, str, bool]] = []
     for era in eras:
         if era:
-            seeds.extend(random.sample(era, min(7, len(era))))
+            seeds.extend((t, a, False) for t, a in random.sample(era, min(7, len(era))))
 
-    tasks = [lastfm_similar(artist, title, limit=50) for title, artist in seeds]
+    # Bias seeds toward what you actually listen to: pull most-played artists from
+    # Navidrome's play counts and seed from a track you own by each of them.
+    rows_by_artist: dict[str, list] = {}
+    for t, a in rows:
+        rows_by_artist.setdefault(a.lower().strip(), []).append((t, a))
+    fav_albums = await get_frequent_albums(user.username, user.password, count=20)
+    seen_fav: set[str] = set()
+    for _, art in fav_albums:
+        k = art.lower().strip()
+        if not k or k in seen_fav or k not in rows_by_artist:
+            continue
+        seen_fav.add(k)
+        t, a = random.choice(rows_by_artist[k])
+        seeds.insert(0, (t, a, True))  # front-load favorites
+        if len(seen_fav) >= 6:
+            break
+
+    tasks = [lastfm_similar(artist, title, limit=50) for title, artist, _ in seeds]
     results = await asyncio.gather(*tasks)
 
     all_tracks = []
-    for (_, seed_art), tracks in zip(seeds, results):
+    for (_, seed_art, is_fav), tracks in zip(seeds, results):
         for t in tracks:
-            all_tracks.append({**t, "seed_artist": str(seed_art)})
+            # Nudge favorite-seeded suggestions up so they surface in "Featured".
+            score = min(1.0, t.get("score", 0.0) * 1.25 + 0.05) if is_fav else t.get("score", 0.0)
+            all_tracks.append({**t, "score": score, "seed_artist": str(seed_art)})
     random.shuffle(all_tracks)
 
     seen: set[tuple[str, str]] = set()
