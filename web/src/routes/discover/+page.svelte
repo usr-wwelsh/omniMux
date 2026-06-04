@@ -60,7 +60,7 @@
             if (e.isIntersecting) {
               const el = e.target as HTMLElement;
               enqueue(el.dataset.artist!, el.dataset.title!);
-              io.unobserve(el);
+              io?.unobserve(el);
             }
           }
         },

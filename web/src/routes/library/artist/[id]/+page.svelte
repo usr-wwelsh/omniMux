@@ -27,7 +27,7 @@
   let previewKey = $state<string | null>(null);
   let previewYtId = $state<string | null>(null);
 
-  $effect(() => { loadArtist(page.params.id); });
+  $effect(() => { loadArtist(page.params.id!); });
 
   // Group tracks by album, preserving order. Tracks with no album go to "Singles & Other".
   const albumGroups = $derived.by(() => {

@@ -4,7 +4,7 @@
   import { api, thumbUrl, type YouTubeAlbumResult, type YouTubeResult } from '$lib/api';
   import AlbumCard from '../../../components/AlbumCard.svelte';
 
-  let name = $derived(decodeURIComponent(page.params.name));
+  let name = $derived(decodeURIComponent(page.params.name!));
 
   let libraryArtist = $state<Artist | null>(null);
   let libraryAlbums = $state<Album[]>([]);

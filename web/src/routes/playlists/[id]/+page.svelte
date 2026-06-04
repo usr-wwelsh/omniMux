@@ -8,7 +8,7 @@
   let loading = $state(true);
 
   $effect(() => {
-    loadPlaylist(page.params.id);
+    loadPlaylist(page.params.id!);
   });
 
   async function loadPlaylist(id: string) {
