@@ -301,6 +301,14 @@
     gap: 14px;
   }
 
+  @media (max-width: 600px) {
+    .album-grid,
+    .yt-album-grid {
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 12px;
+    }
+  }
+
   .yt-album-card {
     display: flex;
     flex-direction: column;

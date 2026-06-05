@@ -201,4 +201,21 @@
     font-size: 12px;
     color: var(--text-secondary);
   }
+
+  @media (max-width: 600px) {
+    .album-grid,
+    .artist-grid {
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 12px;
+    }
+
+    .artist-img {
+      width: 88px;
+      height: 88px;
+    }
+
+    .artist-card {
+      padding: 12px;
+    }
+  }
 </style>

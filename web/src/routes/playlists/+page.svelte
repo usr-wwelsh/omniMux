@@ -176,6 +176,13 @@
     gap: 16px;
   }
 
+  @media (max-width: 600px) {
+    .playlist-grid {
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 12px;
+    }
+  }
+
   .playlist-card {
     display: flex;
     flex-direction: column;
