@@ -14,10 +14,16 @@
   import { showFullscreenPlayer } from '$lib/stores/ui';
   import { theme } from '$lib/stores/theme';
   import { get } from 'svelte/store';
-  import { togglePlay, seek, setVolume, playNext, playPrev, toggleShuffle, cycleLoop, currentTime, duration, volume } from '$lib/stores/player';
+  import { togglePlay, seek, setVolume, playNext, playPrev, toggleShuffle, cycleLoop, currentTime, duration, volume, currentTrack } from '$lib/stores/player';
 
   $effect(() => {
     document.documentElement.setAttribute('data-theme', $theme);
+  });
+
+  $effect(() => {
+    document.title = $currentTrack
+      ? `${$currentTrack.title} · ${$currentTrack.artist} — omniMux`
+      : 'omniMux';
   });
   import FullscreenPlayer from '../components/FullscreenPlayer.svelte';
 

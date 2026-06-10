@@ -2,11 +2,11 @@
   import { currentTrack, isPlaying, currentTime, duration, volume, shuffle, loop, togglePlay, seek, setVolume, playNext, playPrev, toggleShuffle, cycleLoop, formatTime, activeDeviceId, localDeviceId, claimPlayback } from '$lib/stores/player';
   import { otherDevices } from '$lib/stores/devices';
   import { showFullscreenPlayer } from '$lib/stores/ui';
+  import { dragBar } from '$lib/dragBar';
   import DevicesPopover from './DevicesPopover.svelte';
 
-  let progressBar: HTMLDivElement;
-  let volumeBar: HTMLDivElement;
-  let seeking = false;
+  let seeking = $state(false);
+  let seekPct = $state(0);
   let showDevices = $state(false);
 
   const isActivePlayer = $derived(!$activeDeviceId || $activeDeviceId === $localDeviceId);
@@ -14,21 +14,9 @@
     $otherDevices.find((d) => d.device_id === $activeDeviceId)?.device_name ?? 'another device'
   );
 
-  function handleProgressClick(e: MouseEvent) {
-    if (!progressBar) return;
-    const rect = progressBar.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
-    seek(pct * $duration);
-  }
-
-  function handleVolumeClick(e: MouseEvent) {
-    if (!volumeBar) return;
-    const rect = volumeBar.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    setVolume(pct);
-  }
-
-  let progress = $derived($duration > 0 ? ($currentTime / $duration) * 100 : 0);
+  let progress = $derived(
+    seeking ? seekPct * 100 : $duration > 0 ? ($currentTime / $duration) * 100 : 0
+  );
 </script>
 
 {#if $currentTrack}
@@ -81,11 +69,16 @@
       </button>
     </div>
     <div class="player-progress-row">
-      <span class="time">{formatTime($currentTime)}</span>
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="progress-bar" bind:this={progressBar} onclick={handleProgressClick}>
-        <div class="progress-fill" style="width: {progress}%"></div>
+      <span class="time">{formatTime(seeking ? seekPct * $duration : $currentTime)}</span>
+      <div
+        class="progress-bar"
+        use:dragBar={{
+          onDrag: (p) => { seeking = true; seekPct = p; },
+          onCommit: (p) => { seeking = false; seek(p * $duration); },
+          onCancel: () => { seeking = false; }
+        }}
+      >
+        <div class="progress-fill" class:no-transition={seeking} style="width: {progress}%"></div>
       </div>
       <span class="time">{formatTime($duration)}</span>
     </div>
@@ -103,11 +96,15 @@
         <DevicesPopover onclose={() => showDevices = false} />
       {/if}
     </div>
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <svg viewBox="0 0 24 24" width="18" height="18" fill="var(--text-secondary)"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
-    <div class="volume-bar" bind:this={volumeBar} onclick={handleVolumeClick}>
-      <div class="volume-fill" style="width: {$volume * 100}%"></div>
+    <div
+      class="volume-bar"
+      use:dragBar={{
+        onDrag: (p) => setVolume(p),
+        onCommit: (p) => setVolume(p)
+      }}
+    >
+      <div class="volume-fill no-transition" style="width: {$volume * 100}%"></div>
     </div>
   </div>
 </div>
@@ -273,6 +270,10 @@
     background: var(--accent);
     border-radius: 2px;
     transition: width 0.1s linear;
+  }
+
+  .no-transition {
+    transition: none;
   }
 
   .progress-bar:hover .progress-fill,

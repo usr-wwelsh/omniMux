@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { replaceState } from '$app/navigation';
   import { api, thumbUrl, type YouTubeResult } from '$lib/api';
   import { subsonic, type Artist, type Album, type Song } from '$lib/subsonic';
   import { playSong, formatTime } from '$lib/stores/player';
@@ -15,6 +16,7 @@
   let cachedIds = $state<Set<string>>(new Set());
   let downloadingIds = $state<Map<string, number>>(new Map());
   let searching = $state(false);
+  let searchFailed = $state(false);
   let errorIds = $state<Set<string>>(new Set());
   let expandedAlbums = $state<Set<string>>(new Set());
   let downloadingAlbumIds = $state<Set<string>>(new Set());
@@ -72,9 +74,29 @@
       libraryAlbums = [];
       librarySongs = [];
       youtubeResults = [];
+      searchFailed = false;
+      syncQueryToUrl();
       return;
     }
     searchTimeout = setTimeout(() => doSearch(), 300);
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' && query.length >= 2) {
+      clearTimeout(searchTimeout);
+      doSearch();
+    }
+  }
+
+  // Keep ?q= in the URL so back/refresh/share restore the search
+  function syncQueryToUrl() {
+    const trimmed = query.trim();
+    if (page.url.searchParams.get('q') === (trimmed || null)) return;
+    try {
+      replaceState(trimmed ? `/search?q=${encodeURIComponent(trimmed)}` : '/search', {});
+    } catch {
+      // router not ready yet (initial ?q= load) — URL already matches
+    }
   }
 
   // Fire immediately if navigated here with ?q= from discover
@@ -103,8 +125,10 @@
 
   async function doSearch() {
     searching = true;
+    searchFailed = false;
     expandedAlbums = new Set();
     ytAlbumsVisible = 5;
+    syncQueryToUrl();
     try {
       if ($isGuest) {
         const libraryResult = await subsonic.search(query);
@@ -125,7 +149,7 @@
       }
       saveRecentSearch(query);
     } catch {
-      // ignore
+      searchFailed = true;
     } finally {
       searching = false;
     }
@@ -212,6 +236,7 @@
       placeholder="What do you want to listen to?"
       bind:value={query}
       oninput={handleInput}
+      onkeydown={handleKeydown}
       onfocus={() => inputFocused = true}
       onblur={() => setTimeout(() => inputFocused = false, 150)}
       class="search-input"
@@ -233,6 +258,11 @@
 
   {#if searching}
     <p class="status-text">Searching...</p>
+  {:else if searchFailed}
+    <div class="search-error">
+      <span>Search failed — check your connection</span>
+      <button class="retry-btn" onclick={doSearch}>Retry</button>
+    </div>
   {/if}
 
   {#if hasLibraryResults}
@@ -437,7 +467,7 @@
     </section>
   {/if}
 
-  {#if query.length >= 2 && !searching && !hasLibraryResults && youtubeResults.length === 0}
+  {#if query.length >= 2 && !searching && !searchFailed && !hasLibraryResults && youtubeResults.length === 0}
     <p class="status-text">No results found</p>
   {/if}
 </div>
@@ -597,6 +627,31 @@
   .status-text {
     color: var(--text-secondary);
     font-size: 14px;
+  }
+
+  .search-error {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+  }
+
+  .retry-btn {
+    background: none;
+    border: 1px solid var(--text-secondary);
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 14px;
+    border-radius: 16px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+
+  .retry-btn:hover {
+    border-color: var(--text-primary);
   }
 
   .artist-chips {

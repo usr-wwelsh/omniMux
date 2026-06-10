@@ -31,9 +31,31 @@ export const queueIndex = writable<number>(-1);
 export const isPlaying = writable(false);
 export const currentTime = writable(0);
 export const duration = writable(0);
-export const volume = writable(1);
-export const shuffle = writable(false);
-export const loop = writable<'none' | 'all' | 'one'>('none');
+
+const _storedVolume = typeof localStorage !== 'undefined'
+  ? parseFloat(localStorage.getItem('omnimux-volume') ?? '')
+  : NaN;
+export const volume = writable(
+  Number.isFinite(_storedVolume) ? Math.min(Math.max(_storedVolume, 0), 1) : 1
+);
+volume.subscribe((v) => {
+  if (typeof localStorage !== 'undefined') localStorage.setItem('omnimux-volume', String(v));
+});
+
+export const shuffle = writable(
+  typeof localStorage !== 'undefined' && localStorage.getItem('omnimux-shuffle') === '1'
+);
+shuffle.subscribe((s) => {
+  if (typeof localStorage !== 'undefined') localStorage.setItem('omnimux-shuffle', s ? '1' : '0');
+});
+
+const _storedLoop = typeof localStorage !== 'undefined' ? localStorage.getItem('omnimux-loop') : null;
+export const loop = writable<'none' | 'all' | 'one'>(
+  _storedLoop === 'all' || _storedLoop === 'one' ? _storedLoop : 'none'
+);
+loop.subscribe((l) => {
+  if (typeof localStorage !== 'undefined') localStorage.setItem('omnimux-loop', l);
+});
 
 // Which device is currently playing audio (server-synced)
 export const activeDeviceId = writable<string | null>(null);
@@ -83,13 +105,19 @@ let _crossfadeBlackoutUntil = 0;
 const CROSSFADE_BLACKOUT_MS = 2000;
 // Last confirmed server queue version — used for optimistic locking
 let _knownQueueVersion = 0;
+// True from the moment a local change schedules a push until the push completes.
+// While set, server poll state is behind what the user sees here and must not
+// be applied — otherwise a poll landing inside the debounce window reverts the
+// change (e.g. replays the previous track right after clicking a new one).
+let _pushPending = false;
 // Suppress poll-driven queue overwrites while a batch fill is in progress
 export const suppressQueuePollApply = writable(false);
 
 // Shared push logic — handles 409 version conflict with one refetch-and-retry
 async function _doPushQueue(activeId: string, retryOnConflict = true): Promise<void> {
   const myId = get(localDeviceId);
-  if (!myId || get(soloMode)) return;
+  if (!myId || get(soloMode)) { _pushPending = false; return; }
+  _pushPending = true;
   const tracks = get(queue);
   const index = get(queueIndex);
   try {
@@ -106,6 +134,9 @@ async function _doPushQueue(activeId: string, retryOnConflict = true): Promise<v
     }
   } catch (e) {
     console.warn('[omniMux] Failed to push queue to server:', e);
+  } finally {
+    // Only clear if no newer push has been scheduled meanwhile
+    if (!_pushTimer) _pushPending = false;
   }
 }
 
@@ -113,7 +144,11 @@ async function _doPushQueue(activeId: string, retryOnConflict = true): Promise<v
 // Pass localDeviceId to claim ownership, or pass the current activeDeviceId to preserve it.
 function schedulePushQueue(activeId: string) {
   if (_pushTimer) clearTimeout(_pushTimer);
-  _pushTimer = setTimeout(() => _doPushQueue(activeId), 150);
+  _pushPending = true;
+  _pushTimer = setTimeout(() => {
+    _pushTimer = null;
+    _doPushQueue(activeId);
+  }, 150);
 }
 
 // Returns the current active device ID, falling back to this device if none set.
@@ -139,8 +174,13 @@ export function applyServerQueueState(
 ) {
   if (get(soloMode)) return;
   if (get(suppressQueuePollApply)) return;
+  // A local change is scheduled or in flight — the server hasn't seen it yet,
+  // so this poll reflects pre-change state. Applying it would revert the change.
+  if (_pushPending) return;
+  // Stale in-flight poll response from before our last confirmed push
+  if (queueVersion > 0 && queueVersion < _knownQueueVersion) return;
   // Track the latest confirmed server version for optimistic locking
-  if (queueVersion > 0) _knownQueueVersion = queueVersion;
+  if (queueVersion > _knownQueueVersion) _knownQueueVersion = queueVersion;
   const myId = get(localDeviceId);
   activeDeviceId.set(serverActiveDevice);
 
@@ -438,6 +478,9 @@ export async function playQueue(songs: Song[], startIndex = 0) {
         const batch = await Promise.all(restSongs.slice(i, i + BATCH).map(songToTrack));
         queue.update((q) => [...q, ...batch]);
       }
+      // Push the full track list — the eager push may have fired with only the
+      // first slice, and a poll against that would truncate the local queue.
+      schedulePushQueue(activeOrMe());
     })();
   }
 }
@@ -479,6 +522,8 @@ export function claimPlayback() {
 }
 
 export function seek(time: number) {
+  // Optimistic store update — the audio element's timeupdate confirms shortly after
+  currentTime.set(time);
   const a = getAudio();
   a.currentTime = time;
 }

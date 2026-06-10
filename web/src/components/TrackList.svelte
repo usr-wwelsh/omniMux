@@ -1,6 +1,6 @@
 <script lang="ts">
   import { type Song } from '$lib/subsonic';
-  import { playQueue, addSongToQueue, formatTime } from '$lib/stores/player';
+  import { playQueue, addSongToQueue, formatTime, currentTrack, isPlaying } from '$lib/stores/player';
 
   interface Props {
     songs: Song[];
@@ -21,11 +21,18 @@
 
 <div class="track-list">
   {#each songs as song, i}
-    <div class="track-row" role="row">
+    {@const isCurrent = $currentTrack?.id === song.id}
+    <div class="track-row" class:current={isCurrent} role="row">
       <button class="track-main" onclick={() => handlePlay(i)}>
-        <span class="track-num">{i + 1}</span>
+        {#if isCurrent}
+          <span class="track-num eq" class:paused={!$isPlaying}>
+            <span></span><span></span><span></span>
+          </span>
+        {:else}
+          <span class="track-num">{i + 1}</span>
+        {/if}
         <div class="track-info">
-          <div class="track-title">{song.title}</div>
+          <div class="track-title" class:current={isCurrent}>{song.title}</div>
           <div class="track-artist">{song.artist}{#if showAlbum} &middot; {song.album}{/if}</div>
         </div>
         <span class="track-duration">{formatTime(song.duration)}</span>
@@ -54,6 +61,10 @@
     background: var(--bg-elevated);
   }
 
+  .track-row.current {
+    background: color-mix(in srgb, var(--accent) 6%, transparent);
+  }
+
   .track-main {
     display: flex;
     align-items: center;
@@ -72,6 +83,33 @@
     flex-shrink: 0;
   }
 
+  .eq {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 2px;
+    height: 14px;
+  }
+
+  .eq span {
+    width: 3px;
+    background: var(--accent);
+    border-radius: 1px;
+    animation: eq-bounce 1s ease-in-out infinite;
+  }
+
+  .eq span:nth-child(2) { animation-delay: 0.25s; }
+  .eq span:nth-child(3) { animation-delay: 0.5s; }
+
+  .eq.paused span {
+    animation-play-state: paused;
+  }
+
+  @keyframes eq-bounce {
+    0%, 100% { height: 30%; }
+    50% { height: 100%; }
+  }
+
   .track-info {
     flex: 1;
     min-width: 0;
@@ -82,6 +120,10 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .track-title.current {
+    color: var(--accent);
   }
 
   .track-artist {
@@ -113,5 +155,12 @@
 
   .track-queue-btn:hover {
     color: var(--accent);
+  }
+
+  /* No hover on touch devices — keep the button visible */
+  @media (hover: none) {
+    .track-queue-btn {
+      opacity: 1;
+    }
   }
 </style>

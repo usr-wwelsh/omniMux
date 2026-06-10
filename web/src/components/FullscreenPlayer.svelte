@@ -8,7 +8,9 @@
   import { otherDevices } from '$lib/stores/devices';
   import { showFullscreenPlayer, artModeActive, artExpandRequested, autoDJToast } from '$lib/stores/ui';
   import { autoDJActive, advanceVis, visCyclingPaused } from '$lib/stores/autodj';
+  import { onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
+  import { dragBar } from '$lib/dragBar';
   import QueuePanel from './QueuePanel.svelte';
   import {
     visMode, type VisMode, getAnalyser, resumeContext,
@@ -385,30 +387,28 @@ void main() {
     $otherDevices.find((d) => d.device_id === $activeDeviceId)?.device_name ?? 'another device'
   );
 
-  let progressBar: HTMLDivElement;
-  let volumeBar: HTMLDivElement;
+  let seeking = $state(false);
+  let seekPct = $state(0);
 
-  let progress = $derived($duration > 0 ? ($currentTime / $duration) * 100 : 0);
+  let progress = $derived(
+    seeking ? seekPct * 100 : $duration > 0 ? ($currentTime / $duration) * 100 : 0
+  );
 
-  function handleProgressClick(e: MouseEvent) {
-    if (!progressBar) return;
-    const rect = progressBar.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  function commitSeek(p: number) {
+    seeking = false;
+    const t = p * $duration;
     if (isActivePlayer) {
-      seek(pct * $duration);
+      seek(t);
     } else {
-      seekOnActiveDevice(pct * $duration);
+      seekOnActiveDevice(t);
     }
   }
 
-  function handleVolumeClick(e: MouseEvent) {
-    if (!volumeBar) return;
-    const rect = volumeBar.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    setVolume(pct);
-  }
-
   function close() {
+    // Leaving the player always leaves browser fullscreen / art mode too —
+    // otherwise the close button strands the user in fullscreen.
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    artExpanded = false;
     showFullscreenPlayer.set(false);
   }
 
@@ -467,6 +467,14 @@ void main() {
   });
 
   $effect(() => { artModeActive.set(artExpanded); });
+
+  // If the overlay unmounts while in art mode (close, navigation), make sure
+  // art-mode state and browser fullscreen don't outlive it — a stale
+  // artModeActive leaves device polling stuck on the slow 5s interval.
+  onDestroy(() => {
+    artModeActive.set(false);
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  });
 
   // Tick currentTime forward every 250ms when watching another device play,
   // so the progress bar advances smoothly between 1s device polls.
@@ -798,18 +806,20 @@ void main() {
 
       <!-- Progress -->
       <div class="fs-progress-section">
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div
           class="fs-progress-bar"
-          bind:this={progressBar}
-          onclick={handleProgressClick}
+          use:dragBar={{
+            onDrag: (p) => { seeking = true; seekPct = p; },
+            onCommit: commitSeek,
+            onCancel: () => { seeking = false; }
+          }}
         >
-          <div class="fs-progress-fill" style="width: {progress}%">
+          <div class="fs-progress-fill" class:seeking style="width: {progress}%">
             <div class="fs-progress-thumb"></div>
           </div>
         </div>
         <div class="fs-times">
-          <span>{formatTime($currentTime)}</span>
+          <span>{formatTime(seeking ? seekPct * $duration : $currentTime)}</span>
           <span>{formatTime($duration)}</span>
         </div>
       </div>
@@ -844,9 +854,13 @@ void main() {
       <!-- Volume -->
       <div class="fs-volume">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="fs-vol-icon"><path d="M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/><path d="M5 9v6h4l5 5V4L9 9H5zm7-.17v6.34L9.83 13H7v-2h2.83L12 8.83z"/></svg>
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div class="fs-vol-bar" bind:this={volumeBar} onclick={handleVolumeClick}>
+        <div
+          class="fs-vol-bar"
+          use:dragBar={{
+            onDrag: (p) => setVolume(p),
+            onCommit: (p) => setVolume(p)
+          }}
+        >
           <div class="fs-vol-fill" style="width: {$volume * 100}%"></div>
         </div>
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" class="fs-vol-icon"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
@@ -1338,7 +1352,8 @@ void main() {
     transition: opacity 0.15s;
   }
 
-  .fs-progress-bar:hover .fs-progress-thumb {
+  .fs-progress-bar:hover .fs-progress-thumb,
+  .fs-progress-fill.seeking .fs-progress-thumb {
     opacity: 1;
   }
 
