@@ -11,6 +11,7 @@
 
   const themes: { value: Theme; label: string; description: string }[] = [
     { value: 'spotify', label: 'Spotify', description: 'Dark green — the default look' },
+    { value: 'light', label: 'Light', description: 'Clean and bright — simple light mode' },
     { value: 'waybar', label: 'Waybar', description: 'Flat grey — matches Waybar / desktop themes' },
     { value: 'win98', label: 'Win98', description: 'Silver & navy — classic Windows 98 vibes' },
     { value: 'bubblegum', label: 'Bubblegum', description: 'Flat light pink mono — sweet and simple' },
@@ -390,6 +391,11 @@
   [data-theme="spotify"] {
     background: #121212;
     border: 1px solid #1DB954;
+  }
+
+  [data-theme="light"] {
+    background: #ffffff;
+    border: 1px solid #e0e0e5;
   }
 
   [data-theme="waybar"] {
