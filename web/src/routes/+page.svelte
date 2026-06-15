@@ -13,6 +13,7 @@
   let moodPlaylists = $state<Playlist[]>([]);
   let recentAlbums = $state<Album[]>([]);
   let loading = $state(true);
+  let albumsLoading = $state(false);
 
   const activeDevices = $derived($otherDevices.filter((d) => d.track && d.is_playing));
 
@@ -37,6 +38,17 @@
       // Library may be empty
     } finally {
       loading = false;
+    }
+  }
+
+  async function refreshAlbums() {
+    albumsLoading = true;
+    try {
+      randomAlbums = await subsonic.getRandomAlbums(12);
+    } catch {
+      // Library may be empty
+    } finally {
+      albumsLoading = false;
     }
   }
 </script>
@@ -106,14 +118,24 @@
       <section class="section">
         <div class="section-header">
           <h2 class="section-title">Albums</h2>
-          <button class="refresh-btn" onclick={loadHome} disabled={loading} title="Refresh">
+          <button class="refresh-btn" class:refresh-btn--spinning={albumsLoading} onclick={refreshAlbums} disabled={albumsLoading} title="Refresh">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
           </button>
         </div>
         <div class="album-grid">
-          {#each randomAlbums as album}
-            <AlbumCard {album} />
-          {/each}
+          {#if albumsLoading}
+            {#each Array(12) as _}
+              <div class="album-skeleton">
+                <div class="album-skeleton-cover"></div>
+                <div class="album-skeleton-line album-skeleton-line--title"></div>
+                <div class="album-skeleton-line album-skeleton-line--sub"></div>
+              </div>
+            {/each}
+          {:else}
+            {#each randomAlbums as album}
+              <AlbumCard {album} />
+            {/each}
+          {/if}
         </div>
       </section>
     {/if}
@@ -263,8 +285,63 @@
   }
 
   .refresh-btn:disabled {
-    opacity: 0.35;
     cursor: not-allowed;
+  }
+
+  .refresh-btn--spinning svg {
+    animation: refresh-spin 0.8s linear infinite;
+  }
+
+  @keyframes refresh-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .album-skeleton {
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+  }
+
+  .album-skeleton-cover {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 4px;
+    background: var(--bg-elevated);
+    margin-bottom: 12px;
+  }
+
+  .album-skeleton-line {
+    height: 14px;
+    border-radius: 4px;
+    background: var(--bg-elevated);
+  }
+
+  .album-skeleton-line--title {
+    width: 80%;
+    margin-bottom: 8px;
+  }
+
+  .album-skeleton-line--sub {
+    width: 50%;
+    height: 12px;
+  }
+
+  .album-skeleton-cover,
+  .album-skeleton-line {
+    animation: skeleton-pulse 1.4s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-pulse {
+    0%, 100% {
+      opacity: 0.5;
+    }
+    50% {
+      opacity: 1;
+    }
   }
 
   .album-grid {
