@@ -188,7 +188,7 @@ export const api = {
     return res.json();
   },
 
-  async guestLogin(): Promise<{ token: string; username: string; role: string; password: string }> {
+  async guestLogin(): Promise<{ token: string; username: string; role: string }> {
     const res = await fetch('/api/auth/guest/login', { method: 'POST' });
     if (!res.ok) throw new Error('Guest login failed');
     return res.json();

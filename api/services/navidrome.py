@@ -20,6 +20,16 @@ def _subsonic_params(username: str, password: str) -> dict:
     }
 
 
+# Subsonic auth params the client must never be allowed to supply itself —
+# the proxy always sets these server-side from the authenticated user's creds.
+SUBSONIC_AUTH_KEYS = frozenset({"u", "t", "s", "p", "v", "c", "f"})
+
+
+def subsonic_auth_params(username: str, password: str) -> dict:
+    """Public accessor for server-side Subsonic auth params (proxy use)."""
+    return _subsonic_params(username, password)
+
+
 async def validate_credentials(username: str, password: str) -> bool:
     params = _subsonic_params(username, password)
     async with httpx.AsyncClient() as client:

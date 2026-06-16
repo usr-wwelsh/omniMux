@@ -1,50 +1,10 @@
 import { get } from 'svelte/store';
 import { auth } from './auth';
 
-const NAVIDROME_URL = import.meta.env.VITE_NAVIDROME_URL || '/navidrome';
-
-function md5(input: string): Promise<string> {
-  try {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(input);
-    return crypto.subtle.digest('MD5', data).then((hash) => {
-      return Array.from(new Uint8Array(hash))
-        .map((b) => b.toString(16).padStart(2, '0'))
-        .join('');
-    }).catch(() => {
-      return '';
-    });
-  } catch {
-    // crypto.subtle unavailable in non-secure contexts (HTTP + non-localhost)
-    // Fall back to cleartext password via p= param
-    return Promise.resolve('');
-  }
-}
-
-function randomHex(length: number): string {
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function subsonicParams(): Promise<URLSearchParams> {
-  const { username, password } = get(auth);
-  const salt = randomHex(8);
-  const token = await md5(password + salt);
-
-  const params = new URLSearchParams();
-  params.set('u', username);
-  if (token) {
-    params.set('t', token);
-    params.set('s', salt);
-  } else {
-    params.set('p', password);
-  }
-  params.set('v', '1.16.1');
-  params.set('c', 'omniMux');
-  params.set('f', 'json');
-  return params;
-}
+// All Subsonic traffic is proxied through the omniMux API, which injects the
+// Navidrome credentials server-side. The browser only carries the JWT — no
+// usernames, passwords, or salted tokens ever appear in a URL.
+const LIBRARY_BASE = '/api/library';
 
 async function withRetry<T>(
   fn: () => Promise<T>,
@@ -67,11 +27,11 @@ async function withRetry<T>(
 
 async function subsonicGet(endpoint: string, extra: Record<string, string> = {}): Promise<any> {
   return withRetry(async () => {
-    const params = await subsonicParams();
-    for (const [k, v] of Object.entries(extra)) {
-      params.set(k, v);
-    }
-    const res = await fetch(`${NAVIDROME_URL}/rest/${endpoint}?${params.toString()}`);
+    const { token } = get(auth);
+    const params = new URLSearchParams(extra);
+    const res = await fetch(`${LIBRARY_BASE}/rest/${endpoint}?${params.toString()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     const data = await res.json();
     const sr = data['subsonic-response'];
     if (sr?.status !== 'ok') {
@@ -81,17 +41,14 @@ async function subsonicGet(endpoint: string, extra: Record<string, string> = {})
   });
 }
 
+// Media URLs are credential-free relative paths; the proxy authenticates the
+// request via the httpOnly token cookie set at login.
 export async function streamUrl(id: string): Promise<string> {
-  const params = await subsonicParams();
-  params.set('id', id);
-  return `${NAVIDROME_URL}/rest/stream.view?${params.toString()}`;
+  return `${LIBRARY_BASE}/stream/${encodeURIComponent(id)}`;
 }
 
 export async function coverArtUrl(id: string, size = 800): Promise<string> {
-  const params = await subsonicParams();
-  params.set('id', id);
-  params.set('size', size.toString());
-  return `${NAVIDROME_URL}/rest/getCoverArt.view?${params.toString()}`;
+  return `${LIBRARY_BASE}/cover/${encodeURIComponent(id)}?size=${size}`;
 }
 
 export async function fetchItunesArtwork(artist: string, album: string): Promise<string | null> {

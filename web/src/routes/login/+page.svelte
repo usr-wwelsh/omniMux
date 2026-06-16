@@ -26,7 +26,7 @@
     loading = true;
     try {
       const result = await api.login(username, password);
-      login(result.token, username, password, result.role);
+      login(result.token, username, result.role);
       goto('/');
     } catch (err: any) {
       error = err.message || 'Login failed';
@@ -40,7 +40,7 @@
     error = '';
     try {
       const result = await api.guestLogin();
-      login(result.token, result.username, result.password, result.role);
+      login(result.token, result.username, result.role);
       goto('/');
     } catch (err: any) {
       error = err.message || 'Guest login failed';
