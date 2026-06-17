@@ -26,6 +26,15 @@
     { value: '60', label: '60s' },
   ];
 
+  const ambientOptions: { value: number; label: string }[] = [
+    { value: 0, label: 'Off' },
+    { value: 0.5, label: '30s' },
+    { value: 1, label: '1 min' },
+    { value: 5, label: '5 min' },
+    { value: 15, label: '15 min' },
+    { value: 30, label: '30 min' },
+  ];
+
   const personalities = Object.entries(PERSONALITY_CONFIGS) as [DJPersonality, typeof PERSONALITY_CONFIGS[DJPersonality]][];
 
   let guestEnabled = $state(false);
@@ -205,13 +214,14 @@
         <span class="setting-name">Screen saver delay</span>
         <span class="setting-desc">Auto-enter fullscreen art view after this long with no interaction</span>
       </div>
-      <div class="slider-row">
-        <input
-          type="range" min="0" max="30" step="5"
-          bind:value={$ambientIdleMinutes}
-          class="slider"
-        />
-        <span class="slider-val">{$ambientIdleMinutes === 0 ? 'Disabled' : `${$ambientIdleMinutes} min`}</span>
+      <div class="segment-group">
+        {#each ambientOptions as opt}
+          <button
+            class="segment-btn"
+            class:active={$ambientIdleMinutes === opt.value}
+            onclick={() => ambientIdleMinutes.set(opt.value)}
+          >{opt.label}</button>
+        {/each}
       </div>
     </div>
   </section>

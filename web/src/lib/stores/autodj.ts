@@ -711,13 +711,15 @@ function startAmbient(minutes: number) {
   document.addEventListener('mousemove', _resetActivity, { passive: true });
   document.addEventListener('touchstart', _resetActivity, { passive: true });
   document.addEventListener('keydown', _resetActivity, { passive: true });
+  const thresholdMs = minutes * 60 * 1000;
+  const pollMs = Math.min(thresholdMs, 5_000);
   _ambientTimer = setInterval(() => {
     const idleMs = Date.now() - _lastActivity;
-    if (idleMs >= minutes * 60 * 1000) {
+    if (idleMs >= thresholdMs) {
       showFullscreenPlayer.set(true);
       artExpandRequested.update((n) => n + 1);
     }
-  }, 30_000);
+  }, pollMs);
 }
 
 function stopAmbient() {
