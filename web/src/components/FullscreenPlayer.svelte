@@ -1062,7 +1062,9 @@ void main() {
 
   .art-mode .fs-close,
   .art-mode .fs-collapse-art {
-    color: rgba(255, 255, 255, 0.85);
+    color: #fff;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7))
+            drop-shadow(0 0 6px rgba(0, 0, 0, 0.5));
   }
 
   /* Body in art-mode: fill remaining space, push controls to bottom */
