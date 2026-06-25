@@ -8,7 +8,7 @@ from db.database import get_db, async_session
 from db.models import Download
 from routers.auth import get_current_user, UserContext
 from services.download_worker import _analyze_mood
-from services.navidrome import get_or_create_playlist, replace_playlist_songs, search_song
+from services.navidrome import dedupe_playlists, get_or_create_playlist, replace_playlist_songs, search_song
 
 router = APIRouter()
 
@@ -18,6 +18,10 @@ async def sync_mood_playlists(
     user: UserContext = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
+    # Remove any duplicate "Mood: X" playlists left by earlier races/retries,
+    # including moods that no longer have any songs, before re-syncing.
+    deduped = await dedupe_playlists("Mood: ", user.username, user.password)
+
     result = await session.execute(
         select(Download)
         .where(Download.status == "completed")
@@ -47,7 +51,7 @@ async def sync_mood_playlists(
             await replace_playlist_songs(playlist_id, song_ids, user.username, user.password)
             synced[mood] = len(song_ids)
 
-    return {"synced": synced}
+    return {"synced": synced, "deduped": deduped}
 
 
 @router.post("/playlists/backfill-moods")
