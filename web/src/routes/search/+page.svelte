@@ -2,7 +2,7 @@
   import { page } from '$app/state';
   import { replaceState } from '$app/navigation';
   import { api, thumbUrl, type YouTubeResult } from '$lib/api';
-  import { subsonic, type Artist, type Album, type Song } from '$lib/subsonic';
+  import { subsonic, SEARCH_SONG_PAGE_SIZE, type Artist, type Album, type Song } from '$lib/subsonic';
   import { playSong, formatTime } from '$lib/stores/player';
   import { isGuest } from '$lib/auth';
   import TrackList from '../../components/TrackList.svelte';
@@ -21,6 +21,8 @@
   let expandedAlbums = $state<Set<string>>(new Set());
   let downloadingAlbumIds = $state<Set<string>>(new Set());
   let ytAlbumsVisible = $state(5);
+  let librarySongsHasMore = $state(false);
+  let loadingMoreSongs = $state(false);
   let previewKey = $state<string | null>(null);
   let previewYtId = $state<string | null>(null);
   let previewLoading = $state<string | null>(null);
@@ -73,6 +75,7 @@
       libraryArtists = [];
       libraryAlbums = [];
       librarySongs = [];
+      librarySongsHasMore = false;
       youtubeResults = [];
       searchFailed = false;
       syncQueryToUrl();
@@ -135,6 +138,7 @@
         libraryArtists = libraryResult.artists;
         libraryAlbums = libraryResult.albums;
         librarySongs = libraryResult.songs;
+        librarySongsHasMore = libraryResult.songs.length === SEARCH_SONG_PAGE_SIZE;
       } else {
         const [libraryResult, ytResult, cached] = await Promise.all([
           subsonic.search(query),
@@ -144,6 +148,7 @@
         libraryArtists = libraryResult.artists;
         libraryAlbums = libraryResult.albums;
         librarySongs = libraryResult.songs;
+        librarySongsHasMore = libraryResult.songs.length === SEARCH_SONG_PAGE_SIZE;
         youtubeResults = ytResult;
         cachedIds = new Set(cached);
       }
@@ -152,6 +157,20 @@
       searchFailed = true;
     } finally {
       searching = false;
+    }
+  }
+
+  async function loadMoreSongs() {
+    if (loadingMoreSongs || !librarySongsHasMore) return;
+    loadingMoreSongs = true;
+    try {
+      const more = await subsonic.searchMoreSongs(query, librarySongs.length);
+      librarySongs = [...librarySongs, ...more];
+      librarySongsHasMore = more.length === SEARCH_SONG_PAGE_SIZE;
+    } catch {
+      librarySongsHasMore = false;
+    } finally {
+      loadingMoreSongs = false;
     }
   }
 
@@ -298,6 +317,11 @@
       {#if librarySongs.length > 0}
         <h3 class="subsection-title">Songs</h3>
         <TrackList songs={librarySongs} showAlbum />
+        {#if librarySongsHasMore}
+          <button class="show-more-btn" onclick={loadMoreSongs} disabled={loadingMoreSongs}>
+            {loadingMoreSongs ? 'Loading...' : 'Show more'}
+          </button>
+        {/if}
       {/if}
     </section>
   {/if}
@@ -821,7 +845,8 @@
     transition: all 0.15s;
   }
 
-  .show-more-btn:hover { border-color: var(--text-primary); color: var(--text-primary); }
+  .show-more-btn:hover:not(:disabled) { border-color: var(--text-primary); color: var(--text-primary); }
+  .show-more-btn:disabled { opacity: 0.6; cursor: default; }
 
   .dl-done { font-size: 12px; color: var(--accent); }
 

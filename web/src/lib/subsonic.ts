@@ -108,6 +108,17 @@ export interface Song {
   path?: string;
 }
 
+export const SEARCH_SONG_PAGE_SIZE = 20;
+
+function mapSong(s: any): Song {
+  return {
+    id: s.id, title: s.title, artist: s.artist, artistId: s.artistId,
+    album: s.album, albumId: s.albumId, coverArt: s.coverArt,
+    duration: s.duration || 0, track: s.track, year: s.year, genre: s.genre,
+    bpm: s.bpm || undefined,
+  };
+}
+
 export const subsonic = {
   async ping(): Promise<boolean> {
     try {
@@ -198,7 +209,7 @@ export const subsonic = {
   },
 
   async search(query: string): Promise<{ artists: Artist[]; albums: Album[]; songs: Song[] }> {
-    const data = await subsonicGet('search3.view', { query, artistCount: '15', albumCount: '10', songCount: '10' });
+    const data = await subsonicGet('search3.view', { query, artistCount: '15', albumCount: '10', songCount: SEARCH_SONG_PAGE_SIZE.toString() });
     const sr = data.searchResult3 || {};
     return {
       artists: (sr.artist || []).map((a: any) => ({
@@ -208,13 +219,18 @@ export const subsonic = {
         id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
         coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
       })),
-      songs: (sr.song || []).map((s: any) => ({
-        id: s.id, title: s.title, artist: s.artist, artistId: s.artistId,
-        album: s.album, albumId: s.albumId, coverArt: s.coverArt,
-        duration: s.duration || 0, track: s.track, year: s.year, genre: s.genre,
-        bpm: s.bpm || undefined,
-      })),
+      songs: (sr.song || []).map(mapSong),
     };
+  },
+
+  // Paginated continuation of search()'s song results, for "Show more" in the UI.
+  async searchMoreSongs(query: string, offset: number): Promise<Song[]> {
+    const data = await subsonicGet('search3.view', {
+      query, artistCount: '0', albumCount: '0',
+      songCount: SEARCH_SONG_PAGE_SIZE.toString(), songOffset: offset.toString(),
+    });
+    const sr = data.searchResult3 || {};
+    return (sr.song || []).map(mapSong);
   },
 
   async getRecentAlbums(count = 20): Promise<Album[]> {
