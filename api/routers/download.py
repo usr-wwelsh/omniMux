@@ -62,6 +62,18 @@ class PlaylistImportResponse(BaseModel):
     playlist_name: str | None = None
 
 
+class VideoImportRequest(BaseModel):
+    video_url: str
+
+
+class VideoImportResponse(BaseModel):
+    download_id: int
+    status: str
+    already_cached: bool = False
+    title: str | None = None
+    artist: str | None = None
+
+
 class ChannelPlaylist(BaseModel):
     id: str
     title: str
@@ -255,6 +267,59 @@ async def import_playlist(
     )
 
 
+@router.post("/import/video", response_model=VideoImportResponse)
+async def import_video(
+    body: VideoImportRequest,
+    user: UserContext = Depends(require_non_guest),
+    db=Depends(get_db),
+):
+    entry = await asyncio.to_thread(_extract_video, body.video_url)
+    if not entry:
+        raise HTTPException(status_code=400, detail="Could not resolve video")
+
+    youtube_id = entry.get("id", "")
+    if not youtube_id:
+        raise HTTPException(status_code=400, detail="Could not resolve video")
+
+    title = entry.get("title") or "Unknown"
+    if title in ("[Deleted video]", "[Private video]"):
+        raise HTTPException(status_code=400, detail="Video is unavailable")
+    artist = entry.get("artist") or entry.get("channel") or entry.get("uploader") or "Unknown"
+
+    existing = await db.execute(
+        select(TrackMapping).where(TrackMapping.youtube_id == youtube_id)
+    )
+    if existing.scalar_one_or_none():
+        return VideoImportResponse(download_id=0, status="completed", already_cached=True, title=title, artist=artist)
+
+    in_progress = await db.execute(
+        select(Download).where(
+            Download.youtube_id == youtube_id,
+            Download.status.in_(["queued", "downloading", "analyzing", "tagging", "scanning"]),
+        )
+    )
+    existing_dl = in_progress.scalar_one_or_none()
+    if existing_dl:
+        return VideoImportResponse(download_id=existing_dl.id, status=existing_dl.status, title=title, artist=artist)
+
+    dl = Download(
+        youtube_id=youtube_id,
+        youtube_url=f"https://www.youtube.com/watch?v={youtube_id}",
+        title=title,
+        artist=artist,
+        status="queued",
+        navidrome_username=user.username,
+        navidrome_password=user.password,
+    )
+    db.add(dl)
+    await db.commit()
+    await db.refresh(dl)
+
+    _spawn_download(dl.id, user.username, user.password)
+
+    return VideoImportResponse(download_id=dl.id, status="queued", title=title, artist=artist)
+
+
 _extraction_semaphore = asyncio.Semaphore(2)
 _channel_import_tasks: set[asyncio.Task] = set()
 
@@ -366,6 +431,29 @@ def _extract_channel_playlists(url: str) -> list[dict]:
             return playlists
     except Exception:
         return []
+
+
+def _extract_video(url: str) -> dict | None:
+    import yt_dlp
+
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "noplaylist": True,
+        "ignoreerrors": True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if not info:
+                return None
+            if info.get("_type") == "playlist":
+                entries = info.get("entries") or []
+                info = entries[0] if entries else None
+            return info
+    except Exception:
+        return None
 
 
 def _extract_playlist(url: str) -> list[dict]:

@@ -20,6 +20,11 @@
   let importResult = $state<{ queued: number; playlist_name: string | null } | null>(null);
   let importError = $state('');
 
+  let videoUrl = $state('');
+  let importingVideo = $state(false);
+  let videoImportResult = $state<{ title: string | null; already_cached: boolean } | null>(null);
+  let videoImportError = $state('');
+
   $effect(() => {
     loadDownloads();
     pollInterval = setInterval(loadDownloads, 3000);
@@ -50,6 +55,23 @@
       importError = e.message || 'Import failed';
     } finally {
       importing = false;
+    }
+  }
+
+  async function handleVideoImport() {
+    if (!videoUrl.trim()) return;
+    importingVideo = true;
+    videoImportResult = null;
+    videoImportError = '';
+    try {
+      const result = await api.importVideo(videoUrl.trim());
+      videoImportResult = { title: result.title, already_cached: result.already_cached };
+      videoUrl = '';
+      loadDownloads();
+    } catch (e: any) {
+      videoImportError = e.message || 'Import failed';
+    } finally {
+      importingVideo = false;
     }
   }
 
@@ -109,6 +131,40 @@
   {#if $isGuest}
     <p class="status-text">Guest accounts cannot download music.</p>
   {:else}
+
+  <section class="import-section">
+    <div class="section-header">
+      <h2 class="section-title">Import Single Video</h2>
+    </div>
+    <div class="import-form">
+      <input
+        type="text"
+        placeholder="YouTube video URL"
+        bind:value={videoUrl}
+        class="import-input"
+      />
+      <button class="import-btn" onclick={handleVideoImport} disabled={importingVideo || !videoUrl.trim()}>
+        {#if importingVideo}
+          <svg class="spin" viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+          Importing...
+        {:else}
+          Download
+        {/if}
+      </button>
+    </div>
+    {#if videoImportResult}
+      <p class="import-success">
+        {#if videoImportResult.already_cached}
+          "{videoImportResult.title}" is already in your library.
+        {:else}
+          Queued "{videoImportResult.title}" for download.
+        {/if}
+      </p>
+    {/if}
+    {#if videoImportError}
+      <p class="import-error">{videoImportError}</p>
+    {/if}
+  </section>
 
   <section class="import-section">
     <div class="section-header">

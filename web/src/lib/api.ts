@@ -75,6 +75,14 @@ export interface PlaylistImportResponse {
   playlist_name: string | null;
 }
 
+export interface VideoImportResponse {
+  download_id: number;
+  status: string;
+  already_cached: boolean;
+  title: string | null;
+  artist: string | null;
+}
+
 export interface ChannelPlaylist {
   id: string;
   title: string;
@@ -252,6 +260,13 @@ export const api = {
     return request('/api/import/playlist', {
       method: 'POST',
       body: JSON.stringify({ playlist_url, playlist_name: playlist_name || null }),
+    });
+  },
+
+  async importVideo(video_url: string): Promise<VideoImportResponse> {
+    return request('/api/import/video', {
+      method: 'POST',
+      body: JSON.stringify({ video_url }),
     });
   },
 
