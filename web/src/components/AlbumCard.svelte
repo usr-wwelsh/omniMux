@@ -115,6 +115,13 @@
     transform: translateY(0);
   }
 
+  @media (hover: none), (max-width: 768px) {
+    .album-queue-btn {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   .album-queue-btn:hover {
     background: var(--accent);
     color: #000;
