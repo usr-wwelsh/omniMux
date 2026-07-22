@@ -23,9 +23,10 @@ async def proxy_thumb(url: str = Query(...)):
     if not any(host == d or host.endswith("." + d) for d in _THUMB_ALLOWED):
         raise HTTPException(status_code=400, detail="Disallowed image host")
     key = f"thumb:{url}"
-    cached = cache.get(key, _THUMB_TTL)
+    cached = cache.disk_get(key, _THUMB_TTL)
     if cached is not None:
-        return Response(content=cached["data"], media_type=cached["ct"], headers={"Cache-Control": "public, max-age=86400"})
+        data, ct = cached
+        return Response(content=data, media_type=ct, headers={"Cache-Control": "public, max-age=86400"})
     async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
         try:
             r = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -33,7 +34,7 @@ async def proxy_thumb(url: str = Query(...)):
         except Exception:
             raise HTTPException(status_code=502, detail="Failed to fetch thumbnail")
     ct = r.headers.get("content-type", "image/jpeg")
-    cache.set(key, {"data": r.content, "ct": ct}, _THUMB_TTL)
+    cache.disk_set(key, r.content, ct)
     return Response(content=r.content, media_type=ct, headers={"Cache-Control": "public, max-age=86400"})
 
 

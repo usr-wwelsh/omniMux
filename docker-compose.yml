@@ -27,6 +27,7 @@ services:
       DATA_DIR: /data
       JWT_SECRET: change-me-in-production
       MALLOC_ARENA_MAX: 2
+      MALLOC_TRIM_THRESHOLD_: 131072
     depends_on:
       - navidrome
     restart: unless-stopped
