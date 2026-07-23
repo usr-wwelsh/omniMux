@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { goto } from '$app/navigation';
   import { subsonic, type Playlist, coverArtUrl } from '$lib/subsonic';
   import { api } from '$lib/api';
+  import { isGuest } from '$lib/auth';
 
   let playlists = $state<Playlist[]>([]);
   let loading = $state(true);
@@ -8,6 +10,9 @@
   let backfilling = $state(false);
   let syncResult = $state<string | null>(null);
   let coverArts = $state<Map<string, string[]>>(new Map());
+  let creatingPlaylist = $state(false);
+  let newPlaylistName = $state('');
+  let createError = $state('');
 
   $effect(() => {
     subsonic.getPlaylists()
@@ -65,6 +70,18 @@
     }
   }
 
+  async function createPlaylist() {
+    const name = newPlaylistName.trim();
+    if (!name) return;
+    createError = '';
+    try {
+      const pl = await subsonic.createPlaylist(name);
+      goto(`/playlists/${pl.id}`);
+    } catch (e: any) {
+      createError = e.message || 'Failed to create playlist';
+    }
+  }
+
   function formatDuration(seconds: number): string {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
@@ -76,6 +93,22 @@
 <div class="playlists-page">
   <div class="page-header">
     <h1 class="page-title">Playlists</h1>
+    {#if !$isGuest}
+      {#if creatingPlaylist}
+        <input
+          class="name-input"
+          type="text"
+          placeholder="Playlist name"
+          bind:value={newPlaylistName}
+          onkeydown={(e) => e.key === 'Enter' && createPlaylist()}
+          autofocus
+        />
+        <button class="sync-btn" onclick={createPlaylist} disabled={!newPlaylistName.trim()}>Create</button>
+        <button class="sync-btn" onclick={() => (creatingPlaylist = false)}>Cancel</button>
+      {:else}
+        <button class="sync-btn" onclick={() => (creatingPlaylist = true)}>New playlist</button>
+      {/if}
+    {/if}
     <button class="sync-btn" onclick={backfillMoods} disabled={backfilling || syncing}>
       {backfilling ? 'Analyzing…' : 'Analyze moods'}
     </button>
@@ -83,6 +116,10 @@
       {syncing ? 'Syncing…' : 'Sync mood playlists'}
     </button>
   </div>
+
+  {#if createError}
+    <p class="sync-result error">{createError}</p>
+  {/if}
 
   {#if syncResult}
     <p class="sync-result">{syncResult}</p>
@@ -163,6 +200,21 @@
     font-size: 13px;
     color: var(--text-secondary);
     margin-bottom: 16px;
+  }
+
+  .sync-result.error {
+    color: var(--danger);
+  }
+
+  .name-input {
+    padding: 8px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border, rgba(255,255,255,0.1));
+    border-radius: 20px;
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+    min-width: 0;
   }
 
   .status-text {

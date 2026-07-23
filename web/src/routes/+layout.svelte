@@ -26,6 +26,7 @@
       : 'omniMux';
   });
   import FullscreenPlayer from '../components/FullscreenPlayer.svelte';
+  import AddToPlaylistModal from '../components/AddToPlaylistModal.svelte';
 
   let { children } = $props();
 
@@ -148,6 +149,10 @@
 
   {#if $showFullscreenPlayer}
     <FullscreenPlayer />
+  {/if}
+
+  {#if !$isGuest}
+    <AddToPlaylistModal />
   {/if}
 {/if}
 

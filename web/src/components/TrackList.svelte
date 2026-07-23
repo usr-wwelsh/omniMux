@@ -1,13 +1,16 @@
 <script lang="ts">
   import { type Song } from '$lib/subsonic';
   import { playQueue, addSongToQueue, formatTime, currentTrack, isPlaying } from '$lib/stores/player';
+  import { addToPlaylistTarget } from '$lib/stores/ui';
+  import { isGuest } from '$lib/auth';
 
   interface Props {
     songs: Song[];
     showAlbum?: boolean;
+    onRemove?: (index: number) => void;
   }
 
-  let { songs, showAlbum = false }: Props = $props();
+  let { songs, showAlbum = false, onRemove }: Props = $props();
 
   function handlePlay(index: number) {
     playQueue(songs, index);
@@ -16,6 +19,16 @@
   async function handleAddToQueue(e: MouseEvent, song: Song) {
     e.stopPropagation();
     await addSongToQueue(song);
+  }
+
+  function handleAddToPlaylist(e: MouseEvent, song: Song) {
+    e.stopPropagation();
+    addToPlaylistTarget.set(song);
+  }
+
+  function handleRemove(e: MouseEvent, index: number) {
+    e.stopPropagation();
+    onRemove?.(index);
   }
 </script>
 
@@ -40,6 +53,16 @@
       <button class="track-queue-btn" onclick={(e) => handleAddToQueue(e, song)} title="Add to queue">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 11H7.83l4.88-4.88c.39-.39.39-1.03 0-1.42-.39-.39-1.02-.39-1.41 0l-6.59 6.59c-.39.39-.39 1.02 0 1.41l6.59 6.59c.39.39 1.02.39 1.41 0 .39-.39.39-1.02 0-1.41L7.83 13H19c.55 0 1-.45 1-1s-.45-1-1-1zM3 18c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm0-7c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm0-7c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1z"/></svg>
       </button>
+      {#if !$isGuest}
+        <button class="track-queue-btn" onclick={(e) => handleAddToPlaylist(e, song)} title="Add to playlist">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zm4 8v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zM2 16h8v-2H2v2z"/></svg>
+        </button>
+        {#if onRemove}
+          <button class="track-queue-btn" onclick={(e) => handleRemove(e, i)} title="Remove from playlist">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M14 10H2v2h12v-2zm0-4H2v2h12V6zM2 16h8v-2H2v2zm14.34-1.24L18 13.1l1.66 1.66 1.41-1.41L19.41 11.7l1.66-1.66-1.41-1.41L18 10.29l-1.66-1.66-1.41 1.41 1.66 1.66-1.66 1.66z"/></svg>
+          </button>
+        {/if}
+      {/if}
     </div>
   {/each}
 </div>

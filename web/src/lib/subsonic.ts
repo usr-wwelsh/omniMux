@@ -25,10 +25,17 @@ async function withRetry<T>(
   throw lastError;
 }
 
-async function subsonicGet(endpoint: string, extra: Record<string, string> = {}): Promise<any> {
+async function subsonicGet(endpoint: string, extra: Record<string, string | string[]> = {}): Promise<any> {
   return withRetry(async () => {
     const { token } = get(auth);
-    const params = new URLSearchParams(extra);
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(extra)) {
+      if (Array.isArray(value)) {
+        for (const v of value) params.append(key, v);
+      } else {
+        params.append(key, value);
+      }
+    }
     const res = await fetch(`${LIBRARY_BASE}/rest/${endpoint}?${params.toString()}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
@@ -339,5 +346,43 @@ export const subsonic = {
         bpm: s.bpm || undefined,
       })),
     };
+  },
+
+  async createPlaylist(name: string, songIds: string[] = []): Promise<Playlist> {
+    const params: Record<string, string | string[]> = { name };
+    if (songIds.length > 0) params.songId = songIds;
+    const data = await subsonicGet('createPlaylist.view', params);
+    const p = data.playlist;
+    return {
+      id: p.id,
+      name: p.name,
+      songCount: p.songCount || 0,
+      duration: p.duration || 0,
+      coverArt: p.coverArt,
+    };
+  },
+
+  async renamePlaylist(id: string, name: string): Promise<void> {
+    await subsonicGet('updatePlaylist.view', { playlistId: id, name });
+  },
+
+  async deletePlaylist(id: string): Promise<void> {
+    await subsonicGet('deletePlaylist.view', { id });
+  },
+
+  // Subsonic's updatePlaylist doesn't dedupe songIdToAdd, so filter out songs
+  // already in the playlist ourselves to keep re-adds a no-op.
+  async addSongsToPlaylist(id: string, songIds: string[]): Promise<void> {
+    if (songIds.length === 0) return;
+    const { songs: existingSongs } = await this.getPlaylist(id);
+    const existing = new Set(existingSongs.map((s) => s.id));
+    const toAdd = songIds.filter((sid) => !existing.has(sid));
+    if (toAdd.length === 0) return;
+    await subsonicGet('updatePlaylist.view', { playlistId: id, songIdToAdd: toAdd });
+  },
+
+  async removeSongsFromPlaylist(id: string, indexes: number[]): Promise<void> {
+    if (indexes.length === 0) return;
+    await subsonicGet('updatePlaylist.view', { playlistId: id, songIndexToRemove: indexes.map(String) });
   },
 };

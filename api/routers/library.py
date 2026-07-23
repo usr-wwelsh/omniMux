@@ -11,6 +11,14 @@ NAVIDROME_URL = os.environ.get("NAVIDROME_URL", "http://localhost:4533")
 
 router = APIRouter()
 
+# Subsonic endpoints that mutate state — this proxy is otherwise a transparent
+# passthrough, so guest accounts must be blocked from these explicitly.
+_GUEST_BLOCKED_ENDPOINTS = frozenset({
+    "createPlaylist.view",
+    "updatePlaylist.view",
+    "deletePlaylist.view",
+})
+
 
 def _forwarded_params(request: Request, user: UserContext) -> list[tuple[str, str]]:
     """Client query params (repeats preserved) minus any auth keys, plus
@@ -31,6 +39,8 @@ async def subsonic_proxy(
     user: UserContext = Depends(get_user_flexible),
 ):
     """Generic JSON proxy for Subsonic REST calls. Auth is injected server-side."""
+    if user.role == "guest" and endpoint in _GUEST_BLOCKED_ENDPOINTS:
+        raise HTTPException(status_code=403, detail="Guests cannot perform this action")
     params = _forwarded_params(request, user)
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(f"{NAVIDROME_URL}/rest/{endpoint}", params=params)
