@@ -117,6 +117,13 @@ export interface Song {
 
 export const SEARCH_SONG_PAGE_SIZE = 20;
 
+function mapAlbum(al: any): Album {
+  return {
+    id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
+    coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
+  };
+}
+
 function mapSong(s: any): Song {
   return {
     id: s.id, title: s.title, artist: s.artist, artistId: s.artistId,
@@ -158,16 +165,7 @@ export const subsonic = {
     const a = data.artist;
     return {
       artist: { id: a.id, name: a.name, albumCount: a.albumCount || 0, coverArt: a.coverArt },
-      albums: (a.album || []).map((al: any) => ({
-        id: al.id,
-        name: al.name,
-        artist: al.artist,
-        artistId: al.artistId,
-        coverArt: al.coverArt,
-        songCount: al.songCount || 0,
-        year: al.year,
-        genre: al.genre,
-      })),
+      albums: (a.album || []).map(mapAlbum),
     };
   },
 
@@ -175,16 +173,7 @@ export const subsonic = {
     const data = await subsonicGet('getAlbum.view', { id });
     const al = data.album;
     return {
-      album: {
-        id: al.id,
-        name: al.name,
-        artist: al.artist,
-        artistId: al.artistId,
-        coverArt: al.coverArt,
-        songCount: al.songCount || 0,
-        year: al.year,
-        genre: al.genre,
-      },
+      album: mapAlbum(al),
       songs: (al.song || []).map((s: any) => ({
         id: s.id,
         title: s.title,
@@ -209,10 +198,7 @@ export const subsonic = {
     const name = artistName.toLowerCase();
     return (sr.album || [])
       .filter((al: any) => al.artist?.toLowerCase() === name)
-      .map((al: any) => ({
-        id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
-        coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
-      }));
+      .map(mapAlbum);
   },
 
   async search(query: string): Promise<{ artists: Artist[]; albums: Album[]; songs: Song[] }> {
@@ -222,10 +208,7 @@ export const subsonic = {
       artists: (sr.artist || []).map((a: any) => ({
         id: a.id, name: a.name, albumCount: a.albumCount || 0, coverArt: a.coverArt,
       })),
-      albums: (sr.album || []).map((al: any) => ({
-        id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
-        coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
-      })),
+      albums: (sr.album || []).map(mapAlbum),
       songs: (sr.song || []).map(mapSong),
     };
   },
@@ -240,20 +223,19 @@ export const subsonic = {
     return (sr.song || []).map(mapSong);
   },
 
+  // Navidrome owns the play-history ordering, so ask it directly rather than
+  // sorting on fields the Subsonic response may not carry.
+  async getAlbumsByType(type: 'newest' | 'recent' | 'frequent' | 'random', count = 500): Promise<Album[]> {
+    const data = await subsonicGet('getAlbumList2.view', { type, size: count.toString() });
+    return (data.albumList2?.album || []).map(mapAlbum);
+  },
+
   async getRecentAlbums(count = 20): Promise<Album[]> {
-    const data = await subsonicGet('getAlbumList2.view', { type: 'newest', size: count.toString() });
-    return (data.albumList2?.album || []).map((al: any) => ({
-      id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
-      coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
-    }));
+    return this.getAlbumsByType('newest', count);
   },
 
   async getRandomAlbums(count = 12): Promise<Album[]> {
-    const data = await subsonicGet('getAlbumList2.view', { type: 'random', size: count.toString() });
-    return (data.albumList2?.album || []).map((al: any) => ({
-      id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
-      coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
-    }));
+    return this.getAlbumsByType('random', count);
   },
 
   async getAllAlbums(): Promise<Album[]> {
@@ -262,10 +244,7 @@ export const subsonic = {
     let offset = 0;
     while (true) {
       const data = await subsonicGet('getAlbumList2.view', { type: 'alphabeticalByName', size: size.toString(), offset: offset.toString() });
-      const batch = (data.albumList2?.album || []).map((al: any) => ({
-        id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
-        coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
-      }));
+      const batch = (data.albumList2?.album || []).map(mapAlbum);
       if (batch.length === 0) break;
       albums.push(...batch);
       offset += size;
@@ -294,19 +273,11 @@ export const subsonic = {
   },
 
   async getRecentlyPlayed(count = 20): Promise<Album[]> {
-    const data = await subsonicGet('getAlbumList2.view', { type: 'recent', size: count.toString() });
-    return (data.albumList2?.album || []).map((al: any) => ({
-      id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
-      coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
-    }));
+    return this.getAlbumsByType('recent', count);
   },
 
   async getMostPlayed(count = 20): Promise<Album[]> {
-    const data = await subsonicGet('getAlbumList2.view', { type: 'frequent', size: count.toString() });
-    return (data.albumList2?.album || []).map((al: any) => ({
-      id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
-      coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
-    }));
+    return this.getAlbumsByType('frequent', count);
   },
 
   async getPlaylists(): Promise<Playlist[]> {

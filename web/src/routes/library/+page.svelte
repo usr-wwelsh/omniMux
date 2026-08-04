@@ -8,6 +8,111 @@
   let loading = $state(true);
   let shuffling = $state(false);
 
+  type SortKey = 'name' | 'artist' | 'added' | 'year' | 'played' | 'plays';
+
+  const sortOptions: { value: SortKey; label: string }[] = [
+    { value: 'name', label: 'Name' },
+    { value: 'artist', label: 'Artist' },
+    { value: 'added', label: 'Recently added' },
+    { value: 'year', label: 'Year' },
+    { value: 'played', label: 'Recently played' },
+    { value: 'plays', label: 'Most played' },
+  ];
+
+  let filter = $state('');
+  let sortBy = $state<SortKey>('name');
+  let genreFilter = $state('');
+
+  // Genres come from the loaded albums rather than getGenres.view — no extra
+  // request, and the list only ever offers genres you actually own.
+  const genres = $derived.by(() => {
+    const seen = new Map<string, string>();
+    for (const a of albums) {
+      const g = a.genre?.trim();
+      if (g) seen.set(g.toLowerCase(), g);
+    }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
+  });
+
+  // 'added'/'played'/'plays' are orderings only Navidrome can compute, so they're
+  // fetched as ranked id lists on demand and cached for the session.
+  const SERVER_SORTS: Partial<Record<SortKey, 'newest' | 'recent' | 'frequent'>> = {
+    added: 'newest',
+    played: 'recent',
+    plays: 'frequent',
+  };
+
+  let rankings = $state<Partial<Record<SortKey, Map<string, number>>>>({});
+  let rankLoading = $state(false);
+
+  async function ensureRanking(key: SortKey) {
+    const type = SERVER_SORTS[key];
+    if (!type || rankings[key]) return;
+    rankLoading = true;
+    try {
+      const ordered = await subsonic.getAlbumsByType(type);
+      rankings = { ...rankings, [key]: new Map(ordered.map((a, i) => [a.id, i])) };
+    } catch {
+      // Leave unranked — the list falls back to name order below.
+    } finally {
+      rankLoading = false;
+    }
+  }
+
+  $effect(() => { ensureRanking(sortBy); });
+
+  const visibleAlbums = $derived.by(() => {
+    const q = filter.trim().toLowerCase();
+    const g = genreFilter.toLowerCase();
+    const out = albums.filter((a) => {
+      if (g && a.genre?.toLowerCase() !== g) return false;
+      if (!q) return true;
+      return a.name.toLowerCase().includes(q) || a.artist.toLowerCase().includes(q);
+    });
+
+    const byName = (a: Album, b: Album) => a.name.localeCompare(b.name);
+
+    if (SERVER_SORTS[sortBy]) {
+      const rank = rankings[sortBy];
+      if (!rank) return out.sort(byName);
+      // Albums absent from the ranking (never played, etc.) sort last by name.
+      return out.sort((a, b) => {
+        const ra = rank.get(a.id) ?? Infinity;
+        const rb = rank.get(b.id) ?? Infinity;
+        return ra === rb ? byName(a, b) : ra - rb;
+      });
+    }
+
+    if (sortBy === 'artist') {
+      return out.sort((a, b) => a.artist.localeCompare(b.artist) || byName(a, b));
+    }
+    if (sortBy === 'year') {
+      return out.sort((a, b) => (b.year ?? 0) - (a.year ?? 0) || byName(a, b));
+    }
+    return out.sort(byName);
+  });
+
+  // Artists have no genre of their own, so a genre filter narrows them to those
+  // credited on a matching album rather than hiding the section entirely.
+  const visibleArtists = $derived.by(() => {
+    const q = filter.trim().toLowerCase();
+    const g = genreFilter.toLowerCase();
+    const allowed = g
+      ? new Set(albums.filter((a) => a.genre?.toLowerCase() === g).map((a) => a.artist.toLowerCase()))
+      : null;
+    return artists.filter((a) => {
+      if (allowed && !allowed.has(a.name.toLowerCase())) return false;
+      return !q || a.name.toLowerCase().includes(q);
+    });
+  });
+
+  const isFiltered = $derived(filter.trim() !== '' || genreFilter !== '');
+
+  function clearFilters() {
+    filter = '';
+    genreFilter = '';
+  }
+
   $effect(() => {
     load();
   });
@@ -58,22 +163,66 @@
   {:else if albums.length === 0 && artists.length === 0}
     <p class="empty-text">No music in your library yet. Cache some music from YouTube!</p>
   {:else}
-    {#if albums.length > 0}
+    <div class="toolbar">
+      <div class="filter-wrap">
+        <svg class="filter-icon" viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+        </svg>
+        <input
+          class="filter-input"
+          type="search"
+          placeholder="Filter by album or artist..."
+          bind:value={filter}
+        />
+      </div>
+
+      {#if genres.length > 1}
+        <select class="toolbar-select" bind:value={genreFilter} aria-label="Filter by genre">
+          <option value="">All genres</option>
+          {#each genres as g}
+            <option value={g}>{g}</option>
+          {/each}
+        </select>
+      {/if}
+
+      <select class="toolbar-select" bind:value={sortBy} aria-label="Sort albums">
+        {#each sortOptions as opt}
+          <option value={opt.value}>Sort: {opt.label}</option>
+        {/each}
+      </select>
+
+      {#if isFiltered}
+        <button class="clear-btn" onclick={clearFilters}>Clear</button>
+      {/if}
+    </div>
+
+    {#if isFiltered && visibleAlbums.length === 0 && visibleArtists.length === 0}
+      <p class="empty-text">No albums or artists match that filter.</p>
+    {/if}
+
+    {#if visibleAlbums.length > 0}
       <section class="section">
-        <h2 class="section-title">Albums</h2>
+        <h2 class="section-title">
+          Albums
+          {#if isFiltered}<span class="count">{visibleAlbums.length}</span>{/if}
+          {#if rankLoading}<span class="count">sorting…</span>{/if}
+        </h2>
         <div class="album-grid">
-          {#each albums as album}
+          {#each visibleAlbums as album (album.id)}
             <AlbumCard {album} />
           {/each}
         </div>
       </section>
     {/if}
 
-    {#if artists.length > 0}
+    {#if visibleArtists.length > 0}
       <section class="section">
-        <h2 class="section-title">Artists</h2>
+        <h2 class="section-title">
+          Artists
+          {#if isFiltered}<span class="count">{visibleArtists.length}</span>{/if}
+        </h2>
         <div class="artist-grid">
-          {#each artists as artist}
+          {#each visibleArtists as artist (artist.id)}
             <a href="/library/artist/{artist.id}" class="artist-card">
               <div class="artist-img placeholder">
                 <svg viewBox="0 0 24 24" width="40" height="40" fill="var(--text-subdued)"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
@@ -133,6 +282,81 @@
   .loading-text, .empty-text {
     color: var(--text-secondary);
     font-size: 14px;
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 28px;
+  }
+
+  .filter-wrap {
+    position: relative;
+    flex: 1 1 260px;
+    min-width: 0;
+  }
+
+  .filter-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-subdued);
+    pointer-events: none;
+  }
+
+  .filter-input {
+    width: 100%;
+    padding: 9px 12px 9px 36px;
+    background: var(--bg-secondary);
+    border: 1px solid transparent;
+    border-radius: 20px;
+    color: var(--text-primary);
+    font-size: 14px;
+  }
+
+  .filter-input:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .filter-input::placeholder { color: var(--text-subdued); }
+
+  .toolbar-select {
+    padding: 9px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid transparent;
+    border-radius: 20px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    max-width: 190px;
+  }
+
+  .toolbar-select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .clear-btn {
+    padding: 9px 14px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .clear-btn:hover { color: var(--text-primary); }
+
+  .count {
+    color: var(--text-subdued);
+    font-size: 14px;
+    font-weight: 400;
+    margin-left: 6px;
   }
 
   .section {
