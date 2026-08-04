@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.database import get_db
 from db.models import TrackFlags, TagSnapshot
 from routers.auth import get_current_user, require_non_guest, UserContext
-from services.discovery import fingerprint_lookup, lastfm_album_tracks
+from services.discovery import fingerprint_lookup, lastfm_album_tracks, lookup_genre
 from services.metadata import _primary_artist
 from services.navidrome import trigger_scan
 from services import tagger
@@ -166,6 +166,15 @@ async def retag_tracks(
                             tags[k] = meta[k]
                     if not has_albumartist and meta.get("artist"):
                         tags["albumartist"] = _primary_artist(meta["artist"])
+
+                # Replace the mood label that older downloads wrote into genre
+                # with a real MusicBrainz genre. Snapshots above make this undoable.
+                genre = await lookup_genre(
+                    tags.get("artist") or (existing or {}).get("artist", ""),
+                    tags.get("album") or (existing or {}).get("album", ""),
+                )
+                if genre:
+                    tags["genre"] = genre
 
                 if not tags:
                     results["skipped"] += 1

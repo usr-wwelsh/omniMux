@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from db.database import async_session
 from db.models import Download, TrackMapping
-from services.discovery import fingerprint_lookup
+from services.discovery import fingerprint_lookup, lookup_genre
 from services.metadata import tag_file
 from services.navidrome import trigger_scan, search_song, get_or_create_playlist, add_song_to_playlist
 
@@ -138,6 +138,19 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
                 info["album"] = acoustid_meta["album"]
     except Exception:
         pass
+
+    # Step 3b: Real genre from MusicBrainz. yt-dlp almost never supplies one, and
+    # without this the mood label ends up standing in as the genre.
+    if not info.get("genre"):
+        try:
+            genre = await lookup_genre(
+                info.get("artist") or info.get("channel") or artist,
+                target_album or info.get("album") or "",
+            )
+            if genre:
+                info["genre"] = genre
+        except Exception:
+            pass
 
     # Step 4: Tag
     await _update_download(download_id, status="tagging", progress=90)

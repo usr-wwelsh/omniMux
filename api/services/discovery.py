@@ -7,6 +7,8 @@ import subprocess
 
 import httpx
 
+from services import cache
+
 _CK = bytes([0x4f, 0x2a, 0x71, 0x93, 0x1c, 0x8b])
 _AK = bytes([34, 66, 41, 247, 116, 185, 28, 91, 38, 220])
 _LK = bytes([42, 28, 73, 164, 125, 237, 124, 26, 69, 245, 126, 185, 42, 78, 66, 165, 43, 237, 42, 31, 68, 164, 127, 179, 118, 30, 67, 161, 37, 237, 45, 19])
@@ -358,6 +360,80 @@ async def _musicbrainz_artist(mbid: str) -> dict:
     out["members"] = members[:12]
     out["member_of"] = member_of[:12]
     return out
+
+
+def _top_genre(entity: dict) -> str:
+    """Pick the highest-voted MusicBrainz genre. Counts separate real consensus
+    ('trip hop', 20) from the long tail of one-off tags."""
+    genres = [
+        g for g in (entity.get("genres") or [])
+        if isinstance(g, dict) and g.get("name")
+    ]
+    if not genres:
+        return ""
+    best = max(genres, key=lambda g: (g.get("count") or 0, g["name"]))
+    return best["name"]
+
+
+async def _mb_release_group_genre(artist: str, album: str) -> str:
+    search = await _musicbrainz_get(
+        "https://musicbrainz.org/ws/2/release-group",
+        {"query": f'artist:"{artist}" AND releasegroup:"{album}"', "fmt": "json", "limit": 1},
+    )
+    groups = search.get("release-groups") or []
+    if not groups:
+        return ""
+    detail = await _musicbrainz_get(
+        f"https://musicbrainz.org/ws/2/release-group/{groups[0]['id']}",
+        {"fmt": "json", "inc": "genres"},
+    )
+    return _top_genre(detail)
+
+
+async def _mb_artist_genre(artist: str) -> str:
+    search = await _musicbrainz_get(
+        "https://musicbrainz.org/ws/2/artist",
+        {"query": f'artist:"{artist}"', "fmt": "json", "limit": 1},
+    )
+    artists = search.get("artists") or []
+    if not artists:
+        return ""
+    detail = await _musicbrainz_get(
+        f"https://musicbrainz.org/ws/2/artist/{artists[0]['id']}",
+        {"fmt": "json", "inc": "genres"},
+    )
+    return _top_genre(detail)
+
+
+# Placeholder album used when a single is downloaded without album context —
+# never worth a release-group search.
+_PLACEHOLDER_ALBUMS = {"", "youtube", "unknown", "single", "singles"}
+
+
+async def lookup_genre(artist: str, album: str | None) -> str:
+    """Real musical genre for a track, from MusicBrainz. Album-level first, then
+    artist-level for singles. Returns '' when MusicBrainz has no opinion."""
+    artist = (artist or "").strip()
+    if not artist:
+        return ""
+    album = (album or "").strip()
+
+    key = f"genre:{artist.lower()}:{album.lower()}"
+    cached = cache.json_get(key, 30 * 24 * 3600)
+    if cached is not None:
+        return cached.get("genre", "")
+
+    genre = ""
+    try:
+        if album and album.lower() not in _PLACEHOLDER_ALBUMS:
+            genre = await _mb_release_group_genre(artist, album)
+        if not genre:
+            genre = await _mb_artist_genre(artist)
+    except Exception:
+        return ""
+
+    cache.json_set(key, {"genre": genre})
+    return genre
 
 
 async def lastfm_artist_info(artist: str) -> dict:
