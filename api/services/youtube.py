@@ -221,6 +221,9 @@ def get_youtube_album_tracks(artist: str, album: str) -> list[SearchResult]:
                 continue
             album_data = _ytm.get_album(browse_id)
             album_thumb = _best_thumb(album_data.get("thumbnails") or [])
+            # Carry the album through to the download — it's the one place we know
+            # for certain which album these tracks belong to.
+            album_title = album_data.get("title") or r.get("title") or album
             tracks = []
             for track in (album_data.get("tracks") or []):
                 vid = track.get("videoId")
@@ -234,6 +237,7 @@ def get_youtube_album_tracks(artist: str, album: str) -> list[SearchResult]:
                     duration=track.get("duration_seconds") or 0,
                     thumbnail_url=thumb,
                     url=f"https://www.youtube.com/watch?v={vid}",
+                    album=album_title,
                 ))
             return tracks
     except Exception:

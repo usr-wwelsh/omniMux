@@ -89,7 +89,7 @@
   async function importAlbum(album: YouTubeAlbumResult) {
     importingAlbums = new Set([...importingAlbums, album.playlist_id]);
     try {
-      await api.importPlaylist(album.url, album.title);
+      await api.importPlaylist(album.url, album.title, album.title, album.artist || name);
       importingAlbums.delete(album.playlist_id);
       importingAlbums = new Set(importingAlbums);
       importedAlbums = new Set([...importedAlbums, album.playlist_id]);

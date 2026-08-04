@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from db.database import async_session
 from db.models import Download, TrackMapping
+from services import albums
 from services.discovery import fingerprint_lookup, lookup_genre
 from services.metadata import tag_file
 from services.navidrome import trigger_scan, search_song, get_or_create_playlist, add_song_to_playlist
@@ -71,6 +72,7 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
         youtube_id = dl.youtube_id
         playlist_name = dl.playlist_name
         target_album = dl.target_album
+        target_album_artist = dl.album_artist
 
     artist_dir = Path(MUSIC_DIR) / _sanitize(artist)
     artist_dir.mkdir(parents=True, exist_ok=True)
@@ -126,18 +128,36 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
     await _update_download(download_id, status="analyzing", progress=85)
     mood_result = await _analyze_mood(str(file_path))
 
-    # Step 3: AcousticID metadata enrichment — override sloppy YT metadata if confident match
+    # Step 3: AcousticID metadata enrichment — override sloppy YT metadata if confident match.
+    # The album is never taken from a bare fingerprint: a recording sits on dozens of
+    # releases, and picking one per track is what scatters an album across five.
+    acoustid_meta = None
     try:
-        acoustid_meta = await fingerprint_lookup(str(file_path))
+        acoustid_meta = await fingerprint_lookup(str(file_path), album_hint=target_album or "")
         if acoustid_meta:
             if acoustid_meta.get("title"):
                 info["title"] = acoustid_meta["title"]
             if acoustid_meta.get("artist"):
                 info["artist"] = acoustid_meta["artist"]
-            if acoustid_meta.get("album") and not target_album:
-                info["album"] = acoustid_meta["album"]
     except Exception:
         pass
+
+    # Step 3a: One album identity for every track of this album. Resolved from the
+    # album we set out to download — not from whatever release this one file matched.
+    album_identity = await _resolve_album_identity(
+        target_album, target_album_artist or artist, info.get("artist") or artist
+    )
+
+    # Track position, read off the album we just settled on so it agrees with its siblings
+    candidates = (acoustid_meta or {}).get("releases") or []
+    if not info.get("track_number"):
+        info["track_number"] = (
+            albums.track_number(candidates, album_identity.get("release_mbid", ""))
+            or (acoustid_meta or {}).get("track_number", "")
+        )
+    disc = albums.disc_number(candidates, album_identity.get("release_mbid", ""))
+    if disc:
+        info["discnumber"] = disc
 
     # Step 3b: Real genre from MusicBrainz. yt-dlp almost never supplies one, and
     # without this the mood label ends up standing in as the genre.
@@ -145,7 +165,7 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
         try:
             genre = await lookup_genre(
                 info.get("artist") or info.get("channel") or artist,
-                target_album or info.get("album") or "",
+                album_identity.get("album") or target_album or info.get("album") or "",
             )
             if genre:
                 info["genre"] = genre
@@ -157,8 +177,13 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
     try:
         # When downloading an album, use the initiating artist as albumartist so all
         # tracks group together in Navidrome regardless of per-track featured artists.
-        album_artist = artist if target_album else None
-        await tag_file(str(file_path), info, mood_result, target_album=target_album, album_artist=album_artist)
+        album_artist = target_album_artist or (artist if target_album else None)
+        await tag_file(
+            str(file_path), info, mood_result,
+            target_album=target_album,
+            album_artist=album_artist,
+            album_identity=album_identity,
+        )
     except Exception as e:
         await _update_download(download_id, status="failed", error=f"Tagging failed: {e}")
         return
@@ -206,6 +231,31 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
         tagged_title = info.get("title", title)
         tagged_artist = info.get("artist", info.get("channel", artist))
         await _add_to_navidrome_playlist(tagged_title, tagged_artist, playlist_name, username, password)
+
+
+async def _resolve_album_identity(
+    target_album: str | None,
+    initiating_artist: str,
+    track_artist: str,
+) -> dict:
+    """The album fields every track of this album must share.
+
+    Resolved from the album name, not from this track's fingerprint: the lookup is
+    cached per album, so all of its tracks get one identical answer. Deciding per
+    track would hand sibling tracks different releases of the same album — same
+    split as before, just keyed on MusicBrainz IDs instead of titles.
+    """
+    if not target_album or albums.is_placeholder(target_album):
+        return {}
+
+    resolved = await albums.resolve_release(initiating_artist, target_album)
+    if resolved:
+        return albums.identity_from_release(resolved, initiating_artist)
+
+    # Nothing resolved: pin the album to what we asked for and keep the albumartist
+    # uniform so Navidrome doesn't split it by featured artist. Deliberately no
+    # release ID here — differing IDs across tracks are worse than none at all.
+    return {"album": target_album, "albumartist": initiating_artist or track_artist}
 
 
 def _yt_download(url: str, opts: dict) -> dict:

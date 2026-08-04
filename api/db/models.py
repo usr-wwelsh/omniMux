@@ -28,6 +28,7 @@ class Download(Base):
     genre: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     target_album: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    album_artist: Mapped[str | None] = mapped_column(String(500), nullable=True)
     playlist_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     navidrome_username: Mapped[str | None] = mapped_column(String(200), nullable=True)
     navidrome_password: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -71,6 +72,7 @@ class TagSnapshot(Base):
     album: Mapped[str] = mapped_column(String(500), default="")
     genre: Mapped[str] = mapped_column(String(100), default="")
     year: Mapped[str] = mapped_column(String(10), default="")
+    release_mbid: Mapped[str] = mapped_column(String(64), default="")
     snapshot_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

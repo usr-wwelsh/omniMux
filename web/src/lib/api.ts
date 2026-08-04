@@ -285,10 +285,20 @@ export const api = {
     return request('/api/cached');
   },
 
-  async importPlaylist(playlist_url: string, playlist_name?: string): Promise<PlaylistImportResponse> {
+  async importPlaylist(
+    playlist_url: string,
+    playlist_name?: string,
+    album?: string,
+    album_artist?: string,
+  ): Promise<PlaylistImportResponse> {
     return request('/api/import/playlist', {
       method: 'POST',
-      body: JSON.stringify({ playlist_url, playlist_name: playlist_name || null }),
+      body: JSON.stringify({
+        playlist_url,
+        playlist_name: playlist_name || null,
+        album: album || null,
+        album_artist: album_artist || null,
+      }),
     });
   },
 

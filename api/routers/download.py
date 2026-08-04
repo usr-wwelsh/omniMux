@@ -54,6 +54,10 @@ class DownloadStatus(BaseModel):
 class PlaylistImportRequest(BaseModel):
     playlist_url: str
     playlist_name: str | None = None
+    # Set when the "playlist" is really an album, so every track it queues lands in
+    # one album instead of each resolving its own.
+    album: str | None = None
+    album_artist: str | None = None
 
 
 class PlaylistImportResponse(BaseModel):
@@ -248,9 +252,11 @@ async def import_playlist(
             youtube_id=youtube_id,
             youtube_url=f"https://www.youtube.com/watch?v={youtube_id}",
             title=title,
-            artist=entry.get("channel") or entry.get("uploader") or "Unknown",
+            artist=entry.get("artist") or entry.get("channel") or entry.get("uploader") or "Unknown",
             status="queued",
             playlist_name=body.playlist_name or None,
+            target_album=body.album or None,
+            album_artist=body.album_artist or None,
             navidrome_username=user.username,
             navidrome_password=user.password,
         )

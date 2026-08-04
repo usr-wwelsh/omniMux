@@ -30,6 +30,8 @@ async def init_db():
             "ALTER TABLE downloads ADD COLUMN navidrome_username VARCHAR(200)",
             "ALTER TABLE downloads ADD COLUMN navidrome_password VARCHAR(500)",
             "ALTER TABLE downloads ADD COLUMN target_album VARCHAR(500)",
+            "ALTER TABLE downloads ADD COLUMN album_artist VARCHAR(500)",
+            "ALTER TABLE tag_snapshots ADD COLUMN release_mbid VARCHAR(64) DEFAULT ''",
         ]:
             try:
                 await conn.execute(text(migration))

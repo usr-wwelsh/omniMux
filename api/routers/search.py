@@ -107,6 +107,7 @@ async def search_yt_album_tracks(
             duration=r.duration,
             thumbnail_url=r.thumbnail_url,
             url=r.url,
+            album=r.album or album,
         )
         for r in results
     ]
