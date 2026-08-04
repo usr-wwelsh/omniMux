@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { subsonic, type Artist, type Album, type Song } from '$lib/subsonic';
-  import { api, type YouTubeResult } from '$lib/api';
+  import { api, type YouTubeResult, type ArtistContext } from '$lib/api';
   import { isGuest } from '$lib/auth';
   import { playQueue } from '$lib/stores/player';
   import AlbumCard from '../../../../components/AlbumCard.svelte';
@@ -12,6 +12,34 @@
   let ytLoading = $state(false);
   let ytError = $state(false);
   let loading = $state(true);
+
+  let context = $state<ArtistContext | null>(null);
+  let contextLoading = $state(false);
+  let bioExpanded = $state(false);
+
+  const BIO_PREVIEW_CHARS = 420;
+  const bioIsLong = $derived((context?.bio.length ?? 0) > BIO_PREVIEW_CHARS);
+  const bioShown = $derived(
+    !context?.bio ? '' :
+    bioExpanded || !bioIsLong ? context.bio : context.bio.slice(0, BIO_PREVIEW_CHARS).trimEnd() + '…',
+  );
+
+  // "Group · Abingdon-on-Thames · formed 1991"
+  const originLine = $derived.by(() => {
+    if (!context) return '';
+    const parts: string[] = [];
+    if (context.type) parts.push(context.type);
+    if (context.origin) parts.push(context.origin);
+    if (context.began) parts.push(`formed ${context.began.slice(0, 4)}`);
+    if (context.ended) parts.push(`until ${context.ended.slice(0, 4)}`);
+    return parts.join(' · ');
+  });
+
+  function formatCount(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+    return String(n);
+  }
 
   let playingAll = $state(false);
   let showAllAlbums = $state(false);
@@ -48,9 +76,18 @@
     expandedAlbums = new Set();
     showAllAlbums = false;
     ytAlbumsVisible = 5;
+    context = null;
+    bioExpanded = false;
     try {
       const data = await subsonic.getArtist(id);
       artist = data.artist;
+
+      contextLoading = true;
+      api.getArtistContext(data.artist.name)
+        .then((c) => { context = c.found ? c : null; })
+        .catch(() => { context = null; })
+        .finally(() => { contextLoading = false; });
+
       const extra = await subsonic.searchArtistAlbums(data.artist.name);
       const seen = new Set(data.albums.map((a) => a.id));
       const merged = [...data.albums, ...extra.filter((a) => !seen.has(a.id))];
@@ -141,6 +178,54 @@
     <p class="loading-text">Loading...</p>
   {:else if artist}
     <h1 class="page-title">{artist.name}</h1>
+
+    {#if contextLoading && !context}
+      <p class="loading-text">Loading artist info...</p>
+    {:else if context}
+      <section class="about">
+        {#if originLine}
+          <p class="about-origin">{originLine}</p>
+        {/if}
+
+        {#if context.bio}
+          <p class="about-bio">{bioShown}</p>
+          {#if bioIsLong}
+            <button class="link-btn" onclick={() => bioExpanded = !bioExpanded}>
+              {bioExpanded ? 'Show less' : 'Read more'}
+            </button>
+          {/if}
+        {/if}
+
+        {#if context.tags.length > 0}
+          <div class="chip-row">
+            {#each context.tags as tag}
+              <a class="chip" href="/search?q={encodeURIComponent(tag)}">{tag}</a>
+            {/each}
+          </div>
+        {/if}
+
+        {#if context.members.length > 0}
+          <p class="about-line"><span class="about-label">Members</span> {context.members.join(', ')}</p>
+        {:else if context.member_of.length > 0}
+          <p class="about-line"><span class="about-label">Member of</span> {context.member_of.join(', ')}</p>
+        {/if}
+
+        {#if context.similar.length > 0}
+          <div class="about-line">
+            <span class="about-label">Similar</span>
+            {#each context.similar as s, i}<a class="similar-link" href="/search?q={encodeURIComponent(s.name)}">{s.name}</a>{#if i < context.similar.length - 1}<span class="sep">·</span>{/if}{/each}
+          </div>
+        {/if}
+
+        <p class="about-attribution">
+          {#if context.listeners > 0}
+            {formatCount(context.listeners)} listeners ·
+          {/if}
+          Info from <a href={context.url} target="_blank" rel="noopener noreferrer">Last.fm</a>
+          and <a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">MusicBrainz</a>, CC BY-SA
+        </p>
+      </section>
+    {/if}
 
     {#if albums.length > 0}
       <section class="section">
@@ -276,6 +361,86 @@
   .artist-page { max-width: 1200px; }
 
   .page-title { font-size: 32px; font-weight: 700; margin-bottom: 24px; }
+
+  .about {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 36px;
+    max-width: 860px;
+  }
+
+  .about-origin {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 10px;
+  }
+
+  .about-bio {
+    font-size: 14px;
+    line-height: 1.65;
+    white-space: pre-line;
+    margin-bottom: 8px;
+  }
+
+  .link-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .link-btn:hover { text-decoration: underline; }
+
+  .chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .chip {
+    padding: 4px 12px;
+    background: var(--bg-elevated);
+    border-radius: 20px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    transition: color 0.2s, background 0.2s;
+  }
+
+  .chip:hover { color: var(--text-primary); background: var(--bg-highlight); }
+
+  .about-line {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 12px;
+    line-height: 1.6;
+  }
+
+  .about-label {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-right: 6px;
+  }
+
+  .similar-link { color: var(--text-secondary); }
+  .similar-link:hover { color: var(--accent); text-decoration: underline; }
+  .sep { margin: 0 6px; opacity: 0.5; }
+
+  .about-attribution {
+    font-size: 11px;
+    color: var(--text-subdued);
+    margin-top: 16px;
+  }
+
+  .about-attribution a { color: var(--text-subdued); text-decoration: underline; }
+  .about-attribution a:hover { color: var(--text-secondary); }
 
   .section { margin-bottom: 36px; }
 

@@ -1,6 +1,8 @@
 import asyncio
+import html
 import json
 import os
+import re
 import subprocess
 
 import httpx
@@ -250,6 +252,193 @@ async def lastfm_similar(artist: str, title: str, limit: int = 10) -> list[dict]
             for sa in similar_artists[:15] if sa.get("name")
         ], return_exceptions=True)
         return [t for result in nested if isinstance(result, list) for t in result]
+
+
+_TAG_RE = re.compile(r"<[^>]+>")
+# Last.fm appends this boilerplate to every bio; the link is preserved separately
+# as the attribution URL, so drop the sentence itself.
+_READ_MORE_RE = re.compile(r"\s*Read more on Last\.fm.*$", re.IGNORECASE | re.DOTALL)
+_USER_CONTENT_RE = re.compile(r"\s*User-contributed text is available under.*$", re.IGNORECASE | re.DOTALL)
+
+
+def _clean_bio(raw: str) -> str:
+    """Last.fm bios are HTML fragments with trailing attribution boilerplate."""
+    if not raw:
+        return ""
+    text = _TAG_RE.sub("", raw)
+    text = html.unescape(text)
+    text = _READ_MORE_RE.sub("", text)
+    text = _USER_CONTENT_RE.sub("", text)
+    return text.strip()
+
+
+def _tag_names(container, limit: int = 8) -> list[str]:
+    """Last.fm returns tags as {'tag': [...]}, a bare dict, or '' when empty."""
+    if not isinstance(container, dict):
+        return []
+    tags = container.get("tag", [])
+    if isinstance(tags, dict):
+        tags = [tags]
+    if not isinstance(tags, list):
+        return []
+    return [t["name"] for t in tags if isinstance(t, dict) and t.get("name")][:limit]
+
+
+def _as_int(value) -> int:
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return 0
+
+
+_MB_SEM = asyncio.Semaphore(1)
+_MB_MIN_INTERVAL = 1.1  # MusicBrainz allows ~1 req/s for anonymous clients
+_mb_last_call = 0.0
+
+
+async def _musicbrainz_get(url: str, params: dict) -> dict:
+    """Serialised, rate-limited MusicBrainz GET. Back-to-back calls get a 503,
+    which silently drops the enrichment, so space them out and retry."""
+    global _mb_last_call
+    async with _MB_SEM:
+        for attempt in range(3):
+            wait = _MB_MIN_INTERVAL - (asyncio.get_event_loop().time() - _mb_last_call)
+            if wait > 0:
+                await asyncio.sleep(wait)
+            try:
+                async with httpx.AsyncClient(timeout=8) as client:
+                    resp = await client.get(url, params=params, headers=_MB_HEADERS)
+                _mb_last_call = asyncio.get_event_loop().time()
+                if resp.status_code == 200:
+                    return resp.json()
+                if resp.status_code != 503:
+                    return {}
+            except Exception:
+                _mb_last_call = asyncio.get_event_loop().time()
+            await asyncio.sleep(1.0 * (attempt + 1))
+    return {}
+
+
+async def _musicbrainz_artist(mbid: str) -> dict:
+    """Formation date, origin, and line-up for an artist, keyed by MusicBrainz ID."""
+    if not mbid:
+        return {}
+    data = await _musicbrainz_get(
+        f"https://musicbrainz.org/ws/2/artist/{mbid}",
+        {"fmt": "json", "inc": "artist-rels"},
+    )
+    if not data:
+        return {}
+
+    life_span = data.get("life-span") or {}
+    out: dict = {
+        "type": data.get("type") or "",
+        "country": data.get("country") or "",
+        "began": (life_span.get("begin") or "")[:10],
+        "ended": (life_span.get("end") or "")[:10],
+    }
+    area = data.get("area") or {}
+    begin_area = data.get("begin-area") or {}
+    out["origin"] = begin_area.get("name") or area.get("name") or ""
+
+    # "member of band" relations point at the members when direction is backward
+    # (we're the band) and at the bands when forward (we're a person). MusicBrainz
+    # emits one relation per instrument and per stint, so dedupe by name.
+    members: list[str] = []
+    member_of: list[str] = []
+    for rel in data.get("relations") or []:
+        if not isinstance(rel, dict) or rel.get("type") != "member of band":
+            continue
+        name = (rel.get("artist") or {}).get("name")
+        if not name:
+            continue
+        bucket = members if rel.get("direction") == "backward" else member_of
+        if name not in bucket:
+            bucket.append(name)
+    out["members"] = members[:12]
+    out["member_of"] = member_of[:12]
+    return out
+
+
+async def lastfm_artist_info(artist: str) -> dict:
+    """Biography, tags, popularity, and similar artists for an artist."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        data = await _lastfm_call(client, {
+            "method": "artist.getInfo",
+            "artist": artist,
+            "api_key": LASTFM_KEY,
+            "format": "json",
+            "autocorrect": "1",
+        })
+
+    info = data.get("artist")
+    if not isinstance(info, dict):
+        return {}
+
+    bio = info.get("bio") if isinstance(info.get("bio"), dict) else {}
+    stats = info.get("stats") if isinstance(info.get("stats"), dict) else {}
+    similar_raw = info.get("similar") if isinstance(info.get("similar"), dict) else {}
+    similar = similar_raw.get("artist", [])
+    if isinstance(similar, dict):
+        similar = [similar]
+
+    out = {
+        "name": info.get("name", artist),
+        "mbid": info.get("mbid", ""),
+        "url": info.get("url", ""),
+        "bio": _clean_bio(bio.get("content", "") or bio.get("summary", "")),
+        "tags": _tag_names(info.get("tags")),
+        "listeners": _as_int(stats.get("listeners")),
+        "playcount": _as_int(stats.get("playcount")),
+        "similar": [
+            {"name": s["name"], "url": s.get("url", "")}
+            for s in similar
+            if isinstance(s, dict) and s.get("name")
+        ][:8],
+    }
+
+    mb = await _musicbrainz_artist(out["mbid"])
+    out.update({
+        "type": mb.get("type", ""),
+        "origin": mb.get("origin", ""),
+        "country": mb.get("country", ""),
+        "began": mb.get("began", ""),
+        "ended": mb.get("ended", ""),
+        "members": mb.get("members", []),
+        "member_of": mb.get("member_of", []),
+    })
+    return out
+
+
+async def lastfm_album_info(artist: str, album: str) -> dict:
+    """Release notes, tags, and popularity for an album."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        data = await _lastfm_call(client, {
+            "method": "album.getInfo",
+            "artist": artist,
+            "album": album,
+            "api_key": LASTFM_KEY,
+            "format": "json",
+            "autocorrect": "1",
+        })
+
+    info = data.get("album")
+    if not isinstance(info, dict):
+        return {}
+
+    # wiki.published is the Last.fm edit timestamp, not a release date — omitted
+    # deliberately, the album's own year tag is the trustworthy source.
+    wiki = info.get("wiki") if isinstance(info.get("wiki"), dict) else {}
+    return {
+        "name": info.get("name", album),
+        "artist": info.get("artist", artist),
+        "mbid": info.get("mbid", ""),
+        "url": info.get("url", ""),
+        "wiki": _clean_bio(wiki.get("content", "") or wiki.get("summary", "")),
+        "tags": _tag_names(info.get("tags")),
+        "listeners": _as_int(info.get("listeners")),
+        "playcount": _as_int(info.get("playcount")),
+    }
 
 
 async def lastfm_album_tracks(artist: str, album: str) -> list[dict]:

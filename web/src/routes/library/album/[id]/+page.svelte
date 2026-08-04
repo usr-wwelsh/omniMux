@@ -1,6 +1,6 @@
 <script lang="ts">
   import { subsonic, coverArtUrl, type Album, type Song } from '$lib/subsonic';
-  import { api, type YouTubeResult } from '$lib/api';
+  import { api, type YouTubeResult, type AlbumContext } from '$lib/api';
   import { isGuest } from '$lib/auth';
   import TrackList from '../../../../components/TrackList.svelte';
 
@@ -96,6 +96,22 @@
   let coverUrl = $state('');
   let loading = $state(true);
 
+  let context = $state<AlbumContext | null>(null);
+  let wikiExpanded = $state(false);
+
+  const WIKI_PREVIEW_CHARS = 420;
+  const wikiIsLong = $derived((context?.wiki.length ?? 0) > WIKI_PREVIEW_CHARS);
+  const wikiShown = $derived(
+    !context?.wiki ? '' :
+    wikiExpanded || !wikiIsLong ? context.wiki : context.wiki.slice(0, WIKI_PREVIEW_CHARS).trimEnd() + '…',
+  );
+
+  function formatCount(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+    return String(n);
+  }
+
   let missingTracks = $state<YouTubeResult[]>([]);
   let cachedIds = $state<Set<string>>(new Set());
   let downloadingIds = $state<Map<string, number>>(new Map());
@@ -110,6 +126,8 @@
     loading = true;
     missingTracks = [];
     checkDone = false;
+    context = null;
+    wikiExpanded = false;
     try {
       const data = await subsonic.getAlbum(id);
       album = data.album;
@@ -117,6 +135,9 @@
       if (data.album.coverArt) {
         coverUrl = await coverArtUrl(data.album.coverArt, 500);
       }
+      api.getAlbumContext(data.album.artist, data.album.name)
+        .then((c) => { context = c.found && (c.wiki || c.tags.length > 0) ? c : null; })
+        .catch(() => { context = null; });
       // Fire YouTube check in the background — don't block render
       checkMissingTracks(data.album, data.songs);
     } catch {
@@ -418,6 +439,34 @@
       </div>
     </div>
 
+    {#if context}
+      <section class="about">
+        {#if context.wiki}
+          <p class="about-wiki">{wikiShown}</p>
+          {#if wikiIsLong}
+            <button class="link-btn" onclick={() => wikiExpanded = !wikiExpanded}>
+              {wikiExpanded ? 'Show less' : 'Read more'}
+            </button>
+          {/if}
+        {/if}
+
+        {#if context.tags.length > 0}
+          <div class="chip-row">
+            {#each context.tags as tag}
+              <a class="chip" href="/search?q={encodeURIComponent(tag)}">{tag}</a>
+            {/each}
+          </div>
+        {/if}
+
+        <p class="about-attribution">
+          {#if context.listeners > 0}
+            {formatCount(context.listeners)} listeners ·
+          {/if}
+          Info from <a href={context.url} target="_blank" rel="noopener noreferrer">Last.fm</a>, CC BY-SA
+        </p>
+      </section>
+    {/if}
+
     {#if reorderMode}
       <div class="reorder-list">
         {#each reorderedSongs as song, i}
@@ -580,6 +629,59 @@
   .album-page {
     max-width: 900px;
   }
+
+  .about {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 28px;
+  }
+
+  .about-wiki {
+    font-size: 14px;
+    line-height: 1.65;
+    white-space: pre-line;
+    margin-bottom: 8px;
+  }
+
+  .link-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .link-btn:hover { text-decoration: underline; }
+
+  .chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .chip {
+    padding: 4px 12px;
+    background: var(--bg-elevated);
+    border-radius: 20px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    transition: color 0.2s, background 0.2s;
+  }
+
+  .chip:hover { color: var(--text-primary); background: var(--bg-highlight); }
+
+  .about-attribution {
+    font-size: 11px;
+    color: var(--text-subdued);
+    margin-top: 16px;
+  }
+
+  .about-attribution a { color: var(--text-subdued); text-decoration: underline; }
+  .about-attribution a:hover { color: var(--text-secondary); }
 
   .album-header {
     display: flex;

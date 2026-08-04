@@ -75,6 +75,35 @@ export interface PlaylistImportResponse {
   playlist_name: string | null;
 }
 
+export interface ArtistContext {
+  name: string;
+  bio: string;
+  url: string;
+  tags: string[];
+  listeners: number;
+  playcount: number;
+  similar: { name: string; url: string }[];
+  type: string;
+  origin: string;
+  country: string;
+  began: string;
+  ended: string;
+  members: string[];
+  member_of: string[];
+  found: boolean;
+}
+
+export interface AlbumContext {
+  name: string;
+  artist: string;
+  wiki: string;
+  url: string;
+  tags: string[];
+  listeners: number;
+  playcount: number;
+  found: boolean;
+}
+
 export interface VideoImportResponse {
   download_id: number;
   status: string;
@@ -447,5 +476,15 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(data),
     });
+  },
+
+  async getArtistContext(name: string): Promise<ArtistContext> {
+    return request(`/api/context/artist?name=${encodeURIComponent(name)}`);
+  },
+
+  async getAlbumContext(artist: string, album: string): Promise<AlbumContext> {
+    return request(
+      `/api/context/album?artist=${encodeURIComponent(artist)}&album=${encodeURIComponent(album)}`,
+    );
   },
 };
