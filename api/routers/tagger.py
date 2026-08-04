@@ -1,5 +1,6 @@
 import asyncio
 import os
+from collections import defaultdict
 from pathlib import Path
 
 import httpx
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.database import get_db
 from db.models import TrackFlags, TagSnapshot
 from routers.auth import get_current_user, require_non_guest, UserContext
+from services import albums
 from services.discovery import fingerprint_lookup, lastfm_album_tracks, lookup_genre
 from services.metadata import _primary_artist
 from services.navidrome import trigger_scan
@@ -33,6 +35,7 @@ async def _save_snapshot(session: AsyncSession, file_paths: list[str]) -> None:
             existing.album = tags.get("album", "")
             existing.genre = tags.get("genre", "")
             existing.year = tags.get("year", "")
+            existing.release_mbid = tags.get("release_mbid", "")
         else:
             session.add(TagSnapshot(
                 file_path=fp,
@@ -42,6 +45,7 @@ async def _save_snapshot(session: AsyncSession, file_paths: list[str]) -> None:
                 album=tags.get("album", ""),
                 genre=tags.get("genre", ""),
                 year=tags.get("year", ""),
+                release_mbid=tags.get("release_mbid", ""),
             ))
     await session.commit()
 
@@ -143,54 +147,194 @@ async def retag_tracks(
     user: UserContext = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ):
-    await _save_snapshot(session, body.file_paths)
-    sem = asyncio.Semaphore(3)
-    results = {"retagged": 0, "skipped": 0, "errors": []}
+    """Retag files, deciding the album once per album rather than once per file.
 
-    async def process_one(fp: str) -> None:
+    A fingerprint identifies a *recording*, and a recording sits on every release it
+    was ever licensed to. Asking each file separately is what used to split an album
+    into five; here the files vote, and the whole group takes one answer.
+    """
+    await _save_snapshot(session, body.file_paths)
+    results: dict = {"retagged": 0, "skipped": 0, "albums": 0, "errors": []}
+
+    existing_tags: dict[str, dict] = {}
+    for fp in body.file_paths:
+        tags = tagger.read_tags_for_path(fp)
+        if tags:
+            existing_tags[fp] = tags
+
+    # Fingerprint everything first — the album decision needs the whole batch.
+    sem = asyncio.Semaphore(3)
+
+    async def fingerprint(fp: str) -> tuple[str, dict | None]:
         async with sem:
             try:
-                existing = tagger.read_tags_for_path(fp)
-                tags: dict[str, str] = {}
-                has_albumartist = bool(existing and existing.get("albumartist"))
-
-                # Only derive albumartist if not already tagged
-                if not has_albumartist and existing and existing.get("artist"):
-                    tags["albumartist"] = _primary_artist(existing["artist"])
-
-                # AcousticID for better title/artist/album
-                meta = await fingerprint_lookup(fp)
-                if meta:
-                    for k in ("title", "artist", "album"):
-                        if meta.get(k):
-                            tags[k] = meta[k]
-                    if not has_albumartist and meta.get("artist"):
-                        tags["albumartist"] = _primary_artist(meta["artist"])
-
-                # Replace the mood label that older downloads wrote into genre
-                # with a real MusicBrainz genre. Snapshots above make this undoable.
-                genre = await lookup_genre(
-                    tags.get("artist") or (existing or {}).get("artist", ""),
-                    tags.get("album") or (existing or {}).get("album", ""),
+                hint = existing_tags.get(fp, {})
+                return fp, await fingerprint_lookup(
+                    fp,
+                    album_hint=hint.get("album", ""),
+                    release_mbid=hint.get("release_mbid", ""),
                 )
-                if genre:
-                    tags["genre"] = genre
+            except Exception as e:
+                results["errors"].append(f"{Path(fp).name}: {e}")
+                return fp, None
 
-                if not tags:
-                    results["skipped"] += 1
-                    return
-                updated, errs = tagger.write_tags([fp], tags)
-                results["retagged"] += updated
-                results["errors"].extend(errs)
+    prints = dict(await asyncio.gather(*[fingerprint(fp) for fp in body.file_paths]))
+
+    identities = await _resolve_batch_albums(body.file_paths, existing_tags, prints)
+    results["albums"] = len({i.get("release_mbid") or i.get("album") for i in identities.values() if i})
+
+    async def apply(fp: str) -> None:
+        async with sem:
+            try:
+                await _apply_one(fp, existing_tags.get(fp, {}), prints.get(fp) or {},
+                                 identities.get(fp) or {}, results)
             except Exception as e:
                 results["errors"].append(f"{Path(fp).name}: {e}")
 
-    await asyncio.gather(*[process_one(fp) for fp in body.file_paths])
+    await asyncio.gather(*[apply(fp) for fp in body.file_paths])
     try:
         await trigger_scan(user.username, user.password)
     except Exception:
         pass
     return results
+
+
+async def _apply_one(
+    fp: str, existing: dict, meta: dict, identity: dict, results: dict
+) -> None:
+    """Write one file's share of the batch's decisions."""
+    tags: dict[str, str] = {}
+
+    for k in ("title", "artist"):
+        if meta.get(k):
+            tags[k] = meta[k]
+
+    # Album fields come from the group, never from this file's own lookup.
+    for k in ("album", "albumartist", "release_mbid", "release_group_mbid", "compilation"):
+        if identity.get(k):
+            tags[k] = identity[k]
+    if identity.get("year") and not existing.get("year"):
+        tags["year"] = identity["year"]
+
+    if not tags.get("albumartist") and not existing.get("albumartist"):
+        source = tags.get("artist") or existing.get("artist", "")
+        if source:
+            tags["albumartist"] = _primary_artist(source)
+
+    if identity.get("release_mbid"):
+        candidates = meta.get("releases") or []
+        num = albums.track_number(candidates, identity["release_mbid"])
+        if num:
+            tags["tracknumber"] = num
+        disc = albums.disc_number(candidates, identity["release_mbid"])
+        if disc:
+            tags["discnumber"] = disc
+
+    # Replace the mood label that older downloads wrote into genre
+    # with a real MusicBrainz genre. Snapshots above make this undoable.
+    genre = await lookup_genre(
+        tags.get("artist") or existing.get("artist", ""),
+        tags.get("album") or existing.get("album", ""),
+    )
+    if genre:
+        tags["genre"] = genre
+
+    if not tags:
+        results["skipped"] += 1
+        return
+
+    # Moving a file to an album we have no release ID for means any ID still on it
+    # is from the album it just left, and Navidrome would honour that over the name.
+    clear = ["release_mbid", "release_group_mbid"] if tags.get("album") and not tags.get("release_mbid") else []
+    updated, errs = tagger.write_tags([fp], tags, clear=clear)
+    results["retagged"] += updated
+    results["errors"].extend(errs)
+
+
+async def _resolve_batch_albums(
+    file_paths: list[str],
+    existing_tags: dict[str, dict],
+    prints: dict[str, dict | None],
+) -> dict[str, dict]:
+    """Map each file to the album identity its group agreed on.
+
+    Two passes. First: if most of the batch shares one release, the user selected an
+    album — including one previously scattered under several names, which is exactly
+    the case merge-albums existed to clean up by hand. Otherwise: group by the album
+    the files currently claim and resolve each group on its own.
+    """
+    def candidates(fp: str) -> list[dict]:
+        return (prints.get(fp) or {}).get("releases") or []
+
+    groups: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for fp in file_paths:
+        tags = existing_tags.get(fp, {})
+        album = tags.get("album", "")
+        # "YouTube" is not an album — those files have no group to belong to and are
+        # resolved one at a time, on their own unambiguous evidence.
+        key = (fp, "") if albums.is_placeholder(album) else (
+            albums.norm_album(album),
+            albums.norm_album(tags.get("albumartist") or tags.get("artist", "")),
+        )
+        groups[key].append(fp)
+
+    identities: dict[str, dict] = {}
+
+    # Repair pass. Many tiny groups is the signature of one album that got split;
+    # a batch already sitting in album-sized groups is a discography, and folding
+    # that onto its best-selling compilation would be the same bug in reverse.
+    scattered = len(groups) >= 3 and len(file_paths) / len(groups) <= 3
+    if len(file_paths) >= 3 and scattered:
+        whole_batch = albums.choose_release(
+            [candidates(fp) for fp in file_paths], min_coverage=0.7
+        )
+        if whole_batch:
+            identity = albums.identity_from_release(whole_batch)
+            for fp in file_paths:
+                if any(c.get("id") == whole_batch["id"] for c in candidates(fp)):
+                    identities[fp] = identity
+            if len(identities) == len(file_paths):
+                return identities
+            groups = defaultdict(
+                list, {k: [fp for fp in v if fp not in identities] for k, v in groups.items()}
+            )
+
+    for members in groups.values():
+        if not members:
+            continue
+        tags = existing_tags.get(members[0], {})
+        hint_album = tags.get("album", "")
+        album_key = "" if albums.is_placeholder(hint_album) else albums.norm_album(hint_album)
+        hint_mbid = next(
+            (existing_tags.get(fp, {}).get("release_mbid", "") for fp in members
+             if existing_tags.get(fp, {}).get("release_mbid")),
+            "",
+        )
+
+        # A lone file has no one to agree with, so it may only take an album the
+        # hint confirms; a placeholder album ("YouTube") has nothing to preserve.
+        min_coverage = 0.5 if len(members) > 1 else 1.0
+        chosen = albums.choose_release(
+            [candidates(fp) for fp in members],
+            hint_album=hint_album,
+            hint_release_mbid=hint_mbid,
+            min_coverage=min_coverage,
+        )
+        if not chosen:
+            continue
+        if len(members) == 1 and not chosen.get("matched_hint") and not albums.is_placeholder(hint_album):
+            continue
+
+        fallback = tags.get("albumartist") or tags.get("artist", "")
+        identity = albums.identity_from_release(chosen, fallback)
+        # Keep the name the library already uses when it's the same album under a
+        # different edition suffix — renaming for cosmetics only churns the library.
+        if album_key and albums.norm_album(identity.get("album", "")) == album_key:
+            identity["album"] = hint_album
+        for fp in members:
+            identities[fp] = identity
+
+    return identities
 
 
 @router.post("/tagger/tags")
@@ -200,7 +344,22 @@ async def write_tags(
     session: AsyncSession = Depends(get_db),
 ):
     await _save_snapshot(session, body.file_paths)
-    updated, errors = tagger.write_tags(body.file_paths, body.tags)
+    new_album = body.tags.get("album", "")
+
+    updated, errors = 0, []
+    for fp in body.file_paths:
+        # A hand-edited album name must win over the MusicBrainz album ID already on
+        # the file, or Navidrome keeps grouping by the ID and the rename looks lost.
+        current = tagger.read_tags_for_path(fp) or {}
+        clear = (
+            ["release_mbid", "release_group_mbid"]
+            if new_album and albums.norm_album(new_album) != albums.norm_album(current.get("album", ""))
+            else []
+        )
+        u, errs = tagger.write_tags([fp], body.tags, clear=clear)
+        updated += u
+        errors.extend(errs)
+
     try:
         await trigger_scan(user.username, user.password)
     except Exception:
@@ -234,8 +393,12 @@ async def restore_tags(
             "album": snap.album,
             "genre": snap.genre,
             "year": snap.year,
+            "release_mbid": snap.release_mbid,
         }.items() if v}
-        updated, errs = tagger.write_tags([fp], tags)
+        # A MusicBrainz album ID added since the snapshot outranks the restored
+        # album name, so putting the name back means taking that ID away too.
+        clear = [] if snap.release_mbid else ["release_mbid", "release_group_mbid"]
+        updated, errs = tagger.write_tags([fp], tags, clear=clear)
         restored += updated
         errors.extend(errs)
 
@@ -278,10 +441,13 @@ async def merge_albums(
     if not to_merge:
         return {"merged": 0, "errors": ["No matching tracks found"]}
 
-    updated, errors = tagger.write_tags(to_merge, {
-        "album": body.target_album,
-        "albumartist": body.target_albumartist,
-    })
+    # Sources can carry different MusicBrainz album IDs, and Navidrome groups on
+    # those before the name — leaving them would keep the albums apart anyway.
+    updated, errors = tagger.write_tags(
+        to_merge,
+        {"album": body.target_album, "albumartist": body.target_albumartist},
+        clear=["release_mbid", "release_group_mbid"],
+    )
     try:
         await trigger_scan(user.username, user.password)
     except Exception:
@@ -343,7 +509,7 @@ async def album_track_order(
     ), None)
 
     if local_file:
-        meta = await fingerprint_lookup(local_file)
+        meta = await fingerprint_lookup(local_file, album_hint=album)
         if meta and meta.get("release_mbid"):
             tracks = await _mb_release_tracks(meta["release_mbid"])
             if tracks:
