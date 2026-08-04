@@ -7,7 +7,7 @@ import subprocess
 
 import httpx
 
-from services import cache
+from services import albums, cache
 
 _CK = bytes([0x4f, 0x2a, 0x71, 0x93, 0x1c, 0x8b])
 _AK = bytes([34, 66, 41, 247, 116, 185, 28, 91, 38, 220])
@@ -37,8 +37,56 @@ def _run_fpcalc(path: str) -> tuple[int, str] | None:
         return None
 
 
-async def fingerprint_lookup(path: str) -> dict | None:
-    """Fingerprint a local file and return canonical metadata from AcousticID/MusicBrainz, or None."""
+def _parse_release(rel: dict, rec: dict) -> dict | None:
+    """Flatten one AcoustID release into a candidate the album resolver can vote on."""
+    if not isinstance(rel, dict) or not rel.get("id"):
+        return None
+
+    date = rel.get("date") or {}
+    artists = rel.get("artists") or []
+    entry = {
+        "id": rel["id"],
+        "title": rel.get("title", ""),
+        "artist": artists[0].get("name", "") if artists else "",
+        "year": date.get("year") or 0,
+        "month": date.get("month") or 0,
+        "day": date.get("day") or 0,
+        "track_count": rel.get("track_count") or 0,
+        "release_group_id": (rel.get("releasegroup") or {}).get("id", ""),
+        "recording_title": rec.get("title", ""),
+        "recording_id": rec.get("id", ""),
+    }
+
+    rec_artists = rec.get("artists") or []
+    if rec_artists:
+        entry["recording_artist"] = rec_artists[0].get("name", "")
+
+    # Track position, when the lookup returned mediums
+    for medium in rel.get("mediums") or []:
+        tracks = medium.get("tracks") or []
+        if tracks:
+            entry["track_number"] = tracks[0].get("position") or 0
+            entry["medium"] = medium.get("position") or 0
+            break
+
+    # A release whose artist differs from the recording's is a compilation of
+    # other people's work — Navidrome needs that flagged or it splits by artist.
+    if entry["artist"] and entry.get("recording_artist"):
+        entry["is_compilation"] = albums.norm_album(entry["artist"]) == "various artists"
+
+    return entry
+
+
+async def fingerprint_lookup(
+    path: str, album_hint: str = "", release_mbid: str = ""
+) -> dict | None:
+    """Canonical metadata for one local file, from AcoustID/MusicBrainz.
+
+    Returns every release the recording appears on under `releases`, because one
+    file cannot decide which of them is "the" album — only the set of files can.
+    An `album`/`release_mbid` is filled in only when a hint pins it or the file's
+    own candidates are unambiguous; otherwise the caller keeps what it had.
+    """
     fp_result = await asyncio.to_thread(_run_fpcalc, path)
     if not fp_result:
         return None
@@ -46,14 +94,17 @@ async def fingerprint_lookup(path: str) -> dict | None:
 
     for attempt in range(3):
         try:
-            async with httpx.AsyncClient(timeout=10) as client:
+            async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.get(
                     "https://api.acoustid.org/v2/lookup",
                     params={
                         "client": ACOUSTID_KEY,
                         "duration": duration,
                         "fingerprint": fp,
-                        "meta": "recordings releases",
+                        # "releases" and "releasegroups" are alternatives, not
+                        # additive — asking for both returns neither. "tracks" is
+                        # what carries each release's track positions.
+                        "meta": "recordings releases tracks",
                     },
                 )
             data = resp.json()
@@ -74,17 +125,80 @@ async def fingerprint_lookup(path: str) -> dict | None:
     if not recordings:
         return None
 
-    rec = recordings[0]
+    # Several recordings can share a fingerprint (remasters, re-releases). Take
+    # title/artist from the most-sourced one, but collect releases from all of
+    # them so the album resolver sees every release the track could belong to.
+    rec = max(recordings, key=lambda r: r.get("sources", 0))
     meta: dict = {"title": rec.get("title", ""), "mbid": rec.get("id", "")}
-    artists = rec.get("artists", [])
+    artists = rec.get("artists") or []
     if artists:
         meta["artist"] = artists[0].get("name", "")
         meta["artist_mbid"] = artists[0].get("id", "")
-    releases = rec.get("releases", [])
-    if releases:
-        meta["album"] = releases[0].get("title", "")
-        meta["release_mbid"] = releases[0].get("id", "")
+
+    candidates: list[dict] = []
+    seen: set[str] = set()
+    for recording in recordings:
+        for rel in recording.get("releases") or []:
+            entry = _parse_release(rel, recording)
+            if entry and entry["id"] not in seen:
+                seen.add(entry["id"])
+                candidates.append(entry)
+    meta["releases"] = candidates
+
+    chosen = albums.choose_release(
+        [candidates], hint_album=album_hint, hint_release_mbid=release_mbid, min_coverage=1.0
+    )
+    if chosen:
+        meta["album"] = chosen.get("title", "")
+        meta["release_mbid"] = chosen.get("id", "")
+        num = albums.track_number(candidates, chosen.get("id", ""))
+        if num:
+            meta["track_number"] = num
+
     return meta
+
+
+async def mb_search_release(artist: str, album: str) -> dict | None:
+    """Find a release by name, for tracks that aren't downloaded yet.
+
+    Prefers the earliest official release in the release group so an album and its
+    reissues collapse onto one identity.
+    """
+    query = f'release:"{album}" AND artist:"{artist}"' if artist else f'release:"{album}"'
+    data = await _musicbrainz_get(
+        "https://musicbrainz.org/ws/2/release",
+        {"query": query, "fmt": "json", "limit": 10},
+    )
+    releases = data.get("releases") or []
+    if not releases:
+        return None
+
+    target = albums.norm_album(album)
+    matches = [r for r in releases if albums.norm_album(r.get("title", "")) == target] or releases
+
+    def rank(r: dict) -> tuple:
+        credit = r.get("artist-credit") or []
+        name = credit[0].get("name", "") if credit else ""
+        date = (r.get("date") or "").replace("-", "")
+        return (
+            r.get("score", 0),
+            -int(date.ljust(8, "0")) if date else -99999999,
+            albums.norm_album(name) == albums.norm_album(artist),
+        )
+
+    best = max(matches, key=rank)
+    credit = best.get("artist-credit") or []
+    date = (best.get("date") or "").split("-")
+    group = best.get("release-group") or {}
+    return {
+        "id": best.get("id", ""),
+        "title": best.get("title", ""),
+        "artist": credit[0].get("name", "") if credit else "",
+        "year": int(date[0]) if date and date[0].isdigit() else 0,
+        "track_count": best.get("track-count") or 0,
+        "release_group_id": group.get("id", ""),
+        "is_compilation": "Compilation" in (group.get("secondary-types") or []),
+    }
 
 
 _LASTFM_PLACEHOLDER = "2a96cbd8b46e442fc41c2b86b821562f"
