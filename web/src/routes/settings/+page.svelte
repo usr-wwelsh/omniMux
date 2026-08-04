@@ -293,6 +293,24 @@
   </section>
   {/if}
 
+  {#if !$isGuest}
+  <section class="settings-section">
+    <h2 class="section-title">Audio Format</h2>
+
+    <p class="info-note">
+      omniMux caches downloads as <strong>Opus</strong> at 128&nbsp;kbps — perceptually
+      comparable to a 256&nbsp;kbps MP3 at roughly half the storage, which adds up fast
+      once a library runs to thousands of tracks.
+    </p>
+    <p class="info-note">
+      If you need MP3 for a car stereo, an older player, or anything that won't read Opus,
+      Navidrome's own web interface can export your files directly, and its transcoding
+      settings can serve MP3 to any client that asks for it. Your library stays small on
+      disk and portable on the way out.
+    </p>
+  </section>
+  {/if}
+
   <section class="settings-section">
     <h2 class="section-title">About</h2>
 
@@ -360,6 +378,17 @@
     font-size: 13px;
     color: var(--text-secondary);
   }
+
+  .info-note {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    max-width: 620px;
+  }
+
+  .info-note + .info-note { margin-top: 12px; }
+
+  .info-note strong { color: var(--text-primary); font-weight: 600; }
 
   .theme-options {
     display: flex;
