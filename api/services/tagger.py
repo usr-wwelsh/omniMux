@@ -23,6 +23,7 @@ def _read_tags(file_path: Path) -> dict | None:
             "genre": (audio.get("genre") or [""])[0],
             "year": (audio.get("date") or [""])[0][:4],
             "tracknumber": track_num,
+            "release_mbid": (audio.get("musicbrainz_albumid") or [""])[0],
             "duration": int(audio.info.length) if audio.info else 0,
             "added_date": int(file_path.stat().st_mtime),
         }
@@ -98,8 +99,20 @@ def delete_tracks(file_paths: list[str]) -> tuple[int, list[str]]:
     return deleted, errors
 
 
-def write_tags(file_paths: list[str], tags: dict) -> tuple[int, list[str]]:
-    """Write non-empty tag fields to each file. Returns (updated_count, errors)."""
+# Tag keys as written to files, for the fields callers may need to remove outright.
+_CLEARABLE = {
+    "release_mbid": ("musicbrainz_albumid",),
+    "release_group_mbid": ("musicbrainz_releasegroupid",),
+    "compilation": ("compilation",),
+}
+
+
+def write_tags(file_paths: list[str], tags: dict, clear: list[str] | None = None) -> tuple[int, list[str]]:
+    """Write non-empty tag fields to each file, removing any named in `clear`.
+
+    Clearing matters for album identity: a stale MusicBrainz album ID outranks the
+    album name in Navidrome, so leaving one behind would undo a rename.
+    """
     updated = 0
     errors = []
     root = Path(MUSIC_DIR).resolve()
@@ -137,6 +150,20 @@ def write_tags(file_paths: list[str], tags: dict) -> tuple[int, list[str]]:
                 audio["date"] = tags["year"]
             if tags.get("tracknumber"):
                 audio["tracknumber"] = tags["tracknumber"]
+            if tags.get("discnumber"):
+                audio["discnumber"] = tags["discnumber"]
+            # Album identity. Navidrome groups on these, so they matter more than
+            # the album string itself.
+            if tags.get("release_mbid"):
+                audio["musicbrainz_albumid"] = tags["release_mbid"]
+            if tags.get("release_group_mbid"):
+                audio["musicbrainz_releasegroupid"] = tags["release_group_mbid"]
+            if tags.get("compilation"):
+                audio["compilation"] = tags["compilation"]
+
+            for field in clear or []:
+                for key in _CLEARABLE.get(field, ()):
+                    audio.pop(key, None)
 
             audio.save()
             updated += 1

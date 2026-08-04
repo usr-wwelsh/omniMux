@@ -5,7 +5,7 @@ from pathlib import Path
 import httpx
 from mutagen.oggopus import OggOpus
 from mutagen.mp3 import MP3
-from mutagen.id3 import ID3, TIT2, TPE1, TPE2, TALB, TDRC, TCON, TBPM, TXXX, APIC, TRCK
+from mutagen.id3 import ID3, TIT2, TPE1, TPE2, TALB, TDRC, TCON, TBPM, TXXX, APIC, TRCK, TPOS, TCMP
 from mutagen.flac import Picture
 
 _FEAT_RE = re.compile(r'\s*(?:feat\.?|ft\.?|featuring|with|,|&)\s+.+$', re.IGNORECASE)
@@ -44,6 +44,10 @@ def _build_metadata(info: dict, mood_result: dict | None) -> dict:
         "genre": info.get("genre", ""),
         "youtube_id": info.get("id", ""),
         "tracknumber": tracknumber,
+        "discnumber": str(info.get("discnumber", "") or ""),
+        "release_mbid": info.get("release_mbid", ""),
+        "release_group_mbid": info.get("release_group_mbid", ""),
+        "compilation": info.get("compilation", ""),
     }
 
     if mood_result:
@@ -57,12 +61,27 @@ def _build_metadata(info: dict, mood_result: dict | None) -> dict:
     return meta
 
 
-async def tag_file(file_path: str, info: dict, mood_result: dict | None, target_album: str | None = None, album_artist: str | None = None) -> None:
+async def tag_file(
+    file_path: str,
+    info: dict,
+    mood_result: dict | None,
+    target_album: str | None = None,
+    album_artist: str | None = None,
+    album_identity: dict | None = None,
+) -> None:
     meta = _build_metadata(info, mood_result)
     if target_album:
         meta["album"] = target_album
     if album_artist:
         meta["albumartist"] = album_artist
+    # Resolved album identity outranks both: it's the one answer shared by every
+    # track of this album, which is the only thing that keeps them grouped.
+    if album_identity:
+        for key in ("album", "albumartist", "release_mbid", "release_group_mbid", "compilation"):
+            if album_identity.get(key):
+                meta[key] = album_identity[key]
+        if album_identity.get("year") and not meta["date"]:
+            meta["date"] = album_identity["year"]
     thumbnail_url = info.get("thumbnail", "")
     cover_data = await _download_thumbnail(thumbnail_url)
     ext = Path(file_path).suffix.lower()
@@ -94,6 +113,16 @@ def _tag_opus(file_path: str, meta: dict, cover_data: bytes | None) -> None:
     audio["youtube_id"] = meta["youtube_id"]
     if meta.get("tracknumber"):
         audio["tracknumber"] = meta["tracknumber"]
+    if meta.get("discnumber"):
+        audio["discnumber"] = meta["discnumber"]
+    # Navidrome groups by album MBID when present, so the album survives even if
+    # the title string drifts between tracks.
+    if meta.get("release_mbid"):
+        audio["musicbrainz_albumid"] = meta["release_mbid"]
+    if meta.get("release_group_mbid"):
+        audio["musicbrainz_releasegroupid"] = meta["release_group_mbid"]
+    if meta.get("compilation"):
+        audio["compilation"] = meta["compilation"]
 
     if cover_data:
         pic = Picture()
@@ -134,6 +163,14 @@ def _tag_mp3(file_path: str, meta: dict, cover_data: bytes | None) -> None:
     tags.add(TXXX(encoding=3, desc="YOUTUBE_ID", text=meta["youtube_id"]))
     if meta.get("tracknumber"):
         tags.add(TRCK(encoding=3, text=meta["tracknumber"]))
+    if meta.get("discnumber"):
+        tags.add(TPOS(encoding=3, text=meta["discnumber"]))
+    if meta.get("release_mbid"):
+        tags.add(TXXX(encoding=3, desc="MusicBrainz Album Id", text=meta["release_mbid"]))
+    if meta.get("release_group_mbid"):
+        tags.add(TXXX(encoding=3, desc="MusicBrainz Release Group Id", text=meta["release_group_mbid"]))
+    if meta.get("compilation"):
+        tags.add(TCMP(encoding=3, text=meta["compilation"]))
 
     if cover_data:
         tags.add(APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=cover_data))
