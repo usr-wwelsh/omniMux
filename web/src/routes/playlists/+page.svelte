@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
+  import { errorMessage } from '$lib/errors';
   import { subsonic, type Playlist, coverArtUrl } from '$lib/subsonic';
   import { api } from '$lib/api';
   import { isGuest } from '$lib/auth';
@@ -42,8 +43,8 @@
     try {
       const result = await api.backfillMoods();
       syncResult = `Analyzed ${result.updated} of ${result.total} tracks. Now click "Sync mood playlists".`;
-    } catch (e: any) {
-      syncResult = `Error: ${e.message}`;
+    } catch (e) {
+      syncResult = `Error: ${errorMessage(e)}`;
     } finally {
       backfilling = false;
     }
@@ -63,8 +64,8 @@
         playlists = await subsonic.getPlaylists();
         await loadCoverArts(playlists);
       }
-    } catch (e: any) {
-      syncResult = `Error: ${e.message}`;
+    } catch (e) {
+      syncResult = `Error: ${errorMessage(e)}`;
     } finally {
       syncing = false;
     }
@@ -77,8 +78,8 @@
     try {
       const pl = await subsonic.createPlaylist(name);
       goto(`/playlists/${pl.id}`);
-    } catch (e: any) {
-      createError = e.message || 'Failed to create playlist';
+    } catch (e) {
+      createError = errorMessage(e, 'Failed to create playlist');
     }
   }
 

@@ -1,12 +1,14 @@
 <script lang="ts">
   import { subsonic, coverArtUrl, type Album, type Song } from '$lib/subsonic';
+  import { errorMessage } from '$lib/errors';
   import { api, type YouTubeResult, type AlbumContext } from '$lib/api';
   import { isGuest } from '$lib/auth';
   import TrackList from '../../../../components/TrackList.svelte';
 
   // --- merge modal state ---
   let mergeOpen = $state(false);
-  let mergeAlbums = $state<Album[]>([]);
+  type ScoredAlbum = Album & { _score: number };
+  let mergeAlbums = $state<ScoredAlbum[]>([]);
   let mergeSelected = $state<Set<string>>(new Set());
   let mergeFilter = $state('');
   let mergeLoading = $state(false);
@@ -46,8 +48,8 @@
       const all = await subsonic.getAllAlbums();
       mergeAlbums = all
         .filter(a => a.id !== album!.id)
-        .map(a => ({ ...a, _score: albumScore(album!, a) } as Album & { _score: number }))
-        .sort((a, b) => (b as any)._score - (a as any)._score);
+        .map((a): ScoredAlbum => ({ ...a, _score: albumScore(album!, a) }))
+        .sort((a, b) => b._score - a._score);
     } catch {
       mergeAlbums = [];
     } finally {
@@ -65,7 +67,8 @@
 
   function toggleMerge(id: string) {
     const s = new Set(mergeSelected);
-    s.has(id) ? s.delete(id) : s.add(id);
+    if (s.has(id)) s.delete(id);
+    else s.add(id);
     mergeSelected = s;
   }
 
@@ -82,8 +85,8 @@
         ? `Merged ${r.merged} tracks. Errors: ${r.errors.join(', ')}`
         : `Merged ${r.merged} tracks into "${album.name}".`;
       mergeSelected = new Set();
-    } catch (e: any) {
-      mergeResult = `Error: ${e.message}`;
+    } catch (e) {
+      mergeResult = `Error: ${errorMessage(e)}`;
     } finally {
       merging = false;
     }
@@ -171,7 +174,7 @@
   function normalizeTitle(title: string): string {
     return title
       .toLowerCase()
-      .replace(/\s*[\(\[].*?[\)\]]/g, '')
+      .replace(/\s*[([].*?[)\]]/g, '')
       .replace(/\s*-\s*(remaster(ed)?|official|audio|video|lyrics?|hd|hq|mono|stereo).*$/i, '')
       .trim();
   }
@@ -317,8 +320,8 @@
         fixResult = `Fixed order for ${r.updated} track${r.updated !== 1 ? 's' : ''}.`;
         songs = [...ordered];
       }
-    } catch (e: any) {
-      fixResult = `Error: ${e.message}`;
+    } catch (e) {
+      fixResult = `Error: ${errorMessage(e)}`;
     } finally {
       fixing = false;
     }
@@ -382,8 +385,8 @@
         songs = [...reorderedSongs];
         reorderMode = false;
       }
-    } catch (e: any) {
-      reorderResult = `Error: ${e.message}`;
+    } catch (e) {
+      reorderResult = `Error: ${errorMessage(e)}`;
     } finally {
       reorderSaving = false;
     }

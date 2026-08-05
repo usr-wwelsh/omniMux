@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { errorMessage } from '$lib/errors';
   import { api } from '$lib/api';
   import { login } from '$lib/auth';
   import { goto } from '$app/navigation';
@@ -28,8 +29,8 @@
       const result = await api.login(username, password);
       login(result.token, username, result.role);
       goto('/');
-    } catch (err: any) {
-      error = err.message || 'Login failed';
+    } catch (err) {
+      error = errorMessage(err, 'Login failed');
     } finally {
       loading = false;
     }
@@ -42,8 +43,8 @@
       const result = await api.guestLogin();
       login(result.token, result.username, result.role);
       goto('/');
-    } catch (err: any) {
-      error = err.message || 'Guest login failed';
+    } catch (err) {
+      error = errorMessage(err, 'Guest login failed');
     } finally {
       guestLoading = false;
     }

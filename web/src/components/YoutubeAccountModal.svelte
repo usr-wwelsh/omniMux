@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type ChannelPlaylist } from '$lib/api';
+  import { errorMessage } from '$lib/errors';
 
   let { onclose, onimported }: {
     onclose: () => void;
@@ -29,8 +30,8 @@
       }
       selected = new Set(playlists.map((p) => p.id));
       stage = 'selecting';
-    } catch (e: any) {
-      fetchError = e.message || 'Failed to fetch playlists.';
+    } catch (e) {
+      fetchError = errorMessage(e, 'Failed to fetch playlists.');
       stage = 'input';
     }
   }
@@ -63,8 +64,8 @@
       totalQueued = toImport.length;
       stage = 'done';
       onimported({ totalQueued: toImport.length });
-    } catch (e: any) {
-      importError = e.message || 'Import failed';
+    } catch (e) {
+      importError = errorMessage(e, 'Import failed');
       stage = 'selecting';
     }
   }
@@ -77,7 +78,6 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="modal-backdrop" onclick={onclose}></div>
-<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div class="modal" role="dialog" aria-modal="true" onkeydown={handleKeydown}>
   <div class="modal-header">
     <span class="modal-title">Import from YouTube Channel</span>

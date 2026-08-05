@@ -1,5 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import { errorMessage } from '$lib/errors';
   import { goto } from '$app/navigation';
   import { subsonic, type Playlist, type Song } from '$lib/subsonic';
   import { isGuest } from '$lib/auth';
@@ -46,8 +47,8 @@
     try {
       await subsonic.renamePlaylist(playlist.id, trimmed);
       playlist = { ...playlist, name: trimmed };
-    } catch (e: any) {
-      actionError = e.message || 'Failed to rename playlist';
+    } catch (e) {
+      actionError = errorMessage(e, 'Failed to rename playlist');
     }
   }
 
@@ -58,8 +59,8 @@
     try {
       await subsonic.deletePlaylist(playlist.id);
       goto('/playlists');
-    } catch (e: any) {
-      actionError = e.message || 'Failed to delete playlist';
+    } catch (e) {
+      actionError = errorMessage(e, 'Failed to delete playlist');
       deleting = false;
     }
   }
@@ -71,8 +72,8 @@
       await subsonic.removeSongsFromPlaylist(playlist.id, [index]);
       songs = songs.filter((_, i) => i !== index);
       playlist = { ...playlist, songCount: Math.max(0, playlist.songCount - 1) };
-    } catch (e: any) {
-      actionError = e.message || 'Failed to remove track';
+    } catch (e) {
+      actionError = errorMessage(e, 'Failed to remove track');
     }
   }
 

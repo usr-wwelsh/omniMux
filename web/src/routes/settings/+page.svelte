@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { errorMessage } from '$lib/errors';
   import { theme, type Theme } from '$lib/stores/theme';
   import {
     crossfadeDuration, beatmatchEnabled, bpmTolerance,
@@ -85,8 +86,8 @@
     try {
       await api.setGuestEnabled(!guestEnabled);
       guestEnabled = !guestEnabled;
-    } catch (e: any) {
-      guestError = e.message || 'Failed to update guest access';
+    } catch (e) {
+      guestError = errorMessage(e, 'Failed to update guest access');
     } finally {
       guestToggling = false;
     }

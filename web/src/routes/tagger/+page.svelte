@@ -1,5 +1,6 @@
 <script lang="ts">
   import { get } from 'svelte/store';
+  import { errorMessage } from '$lib/errors';
   import { goto } from '$app/navigation';
   import { isGuest } from '$lib/auth';
   import { onMount } from 'svelte';
@@ -155,8 +156,8 @@
       saveResult = `Deleted ${result.deleted} track${result.deleted !== 1 ? 's' : ''}${result.errors.length ? ` · ${result.errors.length} error(s)` : ''}.`;
       tracks = tracks.filter((t) => !paths.includes(t.file_path));
       selected = new Set();
-    } catch (e: any) {
-      saveResult = `Error: ${e.message}`;
+    } catch (e) {
+      saveResult = `Error: ${errorMessage(e)}`;
     } finally {
       saving = false;
     }
@@ -172,8 +173,8 @@
       saveResult = `Retagged ${result.retagged} · skipped ${result.skipped}${result.errors.length ? ` · ${result.errors.length} error(s)` : ''}.`;
       if (result.retagged > 0) setUndoPaths(paths);
       tracks = await api.getTaggerTracks();
-    } catch (e: any) {
-      saveResult = `Error: ${e.message}`;
+    } catch (e) {
+      saveResult = `Error: ${errorMessage(e)}`;
     } finally {
       retagging = false;
     }
@@ -187,8 +188,8 @@
       saveResult = `Restored ${result.restored} track${result.restored !== 1 ? 's' : ''}${result.skipped ? ` · ${result.skipped} had no snapshot` : ''}${result.errors.length ? ` · ${result.errors.length} error(s)` : ''}.`;
       setUndoPaths([]);
       tracks = await api.getTaggerTracks();
-    } catch (e: any) {
-      saveResult = `Error: ${e.message}`;
+    } catch (e) {
+      saveResult = `Error: ${errorMessage(e)}`;
     } finally {
       undoing = false;
     }
@@ -247,8 +248,8 @@
       saveResult = results.join(' ');
       clearBulk();
       selected = new Set();
-    } catch (e: any) {
-      saveResult = `Error: ${e.message}`;
+    } catch (e) {
+      saveResult = `Error: ${errorMessage(e)}`;
     } finally {
       saving = false;
     }
@@ -259,10 +260,6 @@
     const sec = s % 60;
     return `${m}:${String(sec).padStart(2, '0')}`;
   }
-
-  let titlePlaceholder = $derived(
-    selectedTracks.length === 1 ? selectedTracks[0].title : ''
-  );
 
   // Virtual scroll
   const ROW_HEIGHT = 36;

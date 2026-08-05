@@ -1,5 +1,6 @@
 <script lang="ts">
   import { api, type DiscoverResult } from '$lib/api';
+  import { errorMessage } from '$lib/errors';
   import { goto } from '$app/navigation';
   import { isGuest } from '$lib/auth';
 
@@ -91,8 +92,8 @@
       images = new Map();
       pendingKeys.clear();
       queue.length = 0;
-    } catch (e: any) {
-      error = e.message;
+    } catch (e) {
+      error = errorMessage(e);
     } finally {
       loading = false;
     }

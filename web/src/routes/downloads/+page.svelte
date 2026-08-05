@@ -1,5 +1,6 @@
 <script lang="ts">
   import { get } from 'svelte/store';
+  import { errorMessage } from '$lib/errors';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { api, type DownloadStatus } from '$lib/api';
@@ -51,8 +52,8 @@
       importResult = result;
       playlistUrl = '';
       playlistName = '';
-    } catch (e: any) {
-      importError = e.message || 'Import failed';
+    } catch (e) {
+      importError = errorMessage(e, 'Import failed');
     } finally {
       importing = false;
     }
@@ -68,8 +69,8 @@
       videoImportResult = { title: result.title, already_cached: result.already_cached };
       videoUrl = '';
       loadDownloads();
-    } catch (e: any) {
-      videoImportError = e.message || 'Import failed';
+    } catch (e) {
+      videoImportError = errorMessage(e, 'Import failed');
     } finally {
       importingVideo = false;
     }
