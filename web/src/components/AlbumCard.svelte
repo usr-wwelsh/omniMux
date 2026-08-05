@@ -11,9 +11,13 @@
   let coverUrl = $state('');
   let queuing = $state(false);
 
+  // Assigning only in the `if` leaves the previous album's artwork on screen
+  // whenever this instance is reused for a different album (unkeyed {#each}).
   $effect(() => {
     if (album.coverArt) {
       coverArtUrl(album.coverArt, 300).then((url) => (coverUrl = url));
+    } else {
+      coverUrl = '';
     }
   });
 
