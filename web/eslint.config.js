@@ -26,7 +26,6 @@ export default ts.config(
       // Stylistic Svelte rules this codebase doesn't follow. Each is a large,
       // behavior-touching refactor, not a lint fix — left off rather than
       // silenced file-by-file.
-      'svelte/require-each-key': 'off',
       'svelte/no-navigation-without-resolve': 'off',
       'svelte/prefer-svelte-reactivity': 'off',
     },
