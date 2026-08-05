@@ -132,12 +132,12 @@
     <p class="status-text">No playlists yet. Import a YouTube playlist from the Downloads page to get started.</p>
   {:else}
     <div class="playlist-grid">
-      {#each playlists as pl}
+      {#each playlists as pl (pl.id)}
         <a href="/playlists/{pl.id}" class="playlist-card">
           <div class="playlist-art">
             {#if (coverArts.get(pl.id) ?? []).length > 0}
               <div class="art-collage" class:single={(coverArts.get(pl.id) ?? []).length === 1}>
-                {#each (coverArts.get(pl.id) ?? []).slice(0, 4) as url}
+                {#each (coverArts.get(pl.id) ?? []).slice(0, 4) as url, i (i)}
                   <img src={url} alt="" />
                 {/each}
               </div>

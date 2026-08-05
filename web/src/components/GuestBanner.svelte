@@ -68,7 +68,7 @@
           <div class="ai-section">
             <p class="ai-label">New to self-hosting? Ask an AI:</p>
             <div class="ai-badges">
-              {#each aiTools as tool}
+              {#each aiTools as tool (tool.name)}
                 <button
                   class="ai-badge"
                   style={`--ai-color: ${tool.color}`}

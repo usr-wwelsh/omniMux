@@ -33,7 +33,7 @@
 </script>
 
 <div class="track-list">
-  {#each songs as song, i}
+  {#each songs as song, i (i)}
     {@const isCurrent = $currentTrack?.id === song.id}
     <div class="track-row" class:current={isCurrent} role="row">
       <button class="track-main" onclick={() => handlePlay(i)}>

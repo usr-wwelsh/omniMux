@@ -144,7 +144,7 @@
       <p class="status-text">No albums found on YouTube.</p>
     {:else}
       <div class="yt-album-grid">
-        {#each visibleYtAlbums as album}
+        {#each visibleYtAlbums as album (album.playlist_id)}
           <div class="yt-album-card" class:expanded={expandedAlbum === album.playlist_id}>
             <button class="yt-album-header" onclick={() => togglePreview(album)}>
               {#if album.thumbnail_url}
@@ -168,7 +168,7 @@
                 {#if loadingPreview.has(album.playlist_id)}
                   <p class="preview-loading">Loading tracks...</p>
                 {:else}
-                  {#each (previewTracks.get(album.playlist_id) ?? []) as track, i}
+                  {#each (previewTracks.get(album.playlist_id) ?? []) as track, i (i)}
                     {@const key = `${track.artist}|${track.title}`}
                     {@const isPreviewing = previewKey === key}
                     <div class="yt-track-row" class:yt-track-row--active={isPreviewing}>

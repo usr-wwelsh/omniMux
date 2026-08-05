@@ -229,7 +229,7 @@
     <p class="status-text">No downloads yet. Search for music on YouTube and hit Cache!</p>
   {:else}
     <div class="download-list">
-      {#each downloads as dl}
+      {#each downloads as dl (dl.id)}
         <div class="download-row">
           <div class="dl-info">
             <div class="dl-title">{dl.title}</div>

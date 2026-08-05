@@ -758,7 +758,7 @@ void main() {
       <!-- Visualizer mode picker (art-mode only) -->
       {#if artExpanded}
         <div class="vis-mode-picker">
-          {#each VIS_MODES as m}
+          {#each VIS_MODES as m (m)}
             <button
               class="vis-mode-btn"
               class:active={$visMode === m}

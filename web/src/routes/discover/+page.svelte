@@ -141,7 +141,7 @@
 
   {#if loading}
     <div class="featured-row featured-row--skeleton">
-      {#each Array(5) as _}
+      {#each Array(5) as _, i (i)}
         <div class="featured-card featured-card--skeleton">
           <div class="skeleton-art"></div>
           <div class="skeleton-badge"></div>
@@ -151,7 +151,7 @@
       {/each}
     </div>
     <div class="grid">
-      {#each Array(10) as _}
+      {#each Array(10) as _, i (i)}
         <div class="card card--skeleton">
           <div class="skeleton-art"></div>
           <div class="skeleton-artist"></div>
@@ -168,7 +168,7 @@
       <section class="featured-section">
         <p class="section-label">Featured for you</p>
         <div class="featured-row">
-          {#each featured as track}
+          {#each featured as track (tkey(track.artist, track.title))}
             {@const k = tkey(track.artist, track.title)}
             {@const isPreviewing = previewKey === k}
             {@const isLoading = previewLoading === k}
@@ -242,7 +242,7 @@
     {/if}
 
     <div class="grid">
-      {#each grid as track}
+      {#each grid as track (tkey(track.artist, track.title))}
         {@const k = tkey(track.artist, track.title)}
         {@const isPreviewing = previewKey === k}
         {@const isLoading = previewLoading === k}

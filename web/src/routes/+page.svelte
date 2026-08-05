@@ -76,7 +76,7 @@
     <section class="section">
       <h2 class="section-title">Playing on other devices</h2>
       <div class="device-cards">
-        {#each activeDevices as device}
+        {#each activeDevices as device (device.device_id)}
           <div class="device-card">
             <div class="device-card-info">
               <div class="device-card-name">{device.device_name}</div>
@@ -124,7 +124,7 @@
         </div>
         <div class="album-grid">
           {#if albumsLoading}
-            {#each Array(12) as _}
+            {#each Array(12) as _, i (i)}
               <div class="album-skeleton">
                 <div class="album-skeleton-cover"></div>
                 <div class="album-skeleton-line album-skeleton-line--title"></div>
@@ -144,7 +144,7 @@
       <section class="section">
         <h2 class="section-title">Moods</h2>
         <div class="mood-chips">
-          {#each moodPlaylists as playlist}
+          {#each moodPlaylists as playlist (playlist.id)}
             <a href="/playlists/{playlist.id}" class="mood-chip">
               {playlist.name.slice(6)}
             </a>

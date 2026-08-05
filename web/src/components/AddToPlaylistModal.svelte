@@ -122,7 +122,7 @@
       <p class="hint">No playlists yet.</p>
     {:else}
       <div class="playlist-list">
-        {#each playlists as pl}
+        {#each playlists as pl (pl.id)}
           <button class="playlist-row" onclick={() => addTo(pl.id)} disabled={addedTo.has(pl.id)}>
             <span class="row-title">{pl.name}</span>
             {#if addedTo.has(pl.id)}

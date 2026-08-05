@@ -102,7 +102,7 @@
       </div>
     </div>
     <div class="queue-list">
-      {#each $queue as track, i}
+      {#each $queue as track, i (i)}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="queue-item"

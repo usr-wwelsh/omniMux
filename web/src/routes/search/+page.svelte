@@ -254,7 +254,7 @@
     />
     {#if showRecents}
       <div class="recents-dropdown">
-        {#each recentSearches as recent}
+        {#each recentSearches as recent (recent)}
           <div class="recent-item" role="button" tabindex="0" onclick={() => selectRecent(recent)} onkeydown={(e) => e.key === 'Enter' && selectRecent(recent)}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="var(--text-secondary)"><path d="M13 3a9 9 0 1 0 0 18A9 9 0 0 0 13 3zm0 16a7 7 0 1 1 0-14A7 7 0 0 1 13 19zm.5-11H12v6l5.25 3.15.75-1.23-4.5-2.67V8z"/></svg>
             <span>{recent}</span>
@@ -283,7 +283,7 @@
       {#if libraryArtists.length > 0}
         <h3 class="subsection-title">Artists</h3>
         <div class="artist-chips">
-          {#each libraryArtists as artist}
+          {#each libraryArtists as artist (artist.id)}
             <a href="/library/artist/{artist.id}" class="artist-chip">
               <div class="artist-avatar">
                 {artist.name.charAt(0).toUpperCase()}
@@ -335,7 +335,7 @@
       {#if albumGroups}
         <p class="yt-meta">{youtubeResults.length} tracks · {albumGroups.size} album{albumGroups.size !== 1 ? 's' : ''}</p>
         <div class="yt-album-list">
-          {#each [...albumGroups].slice(0, ytAlbumsVisible) as [albumName, tracks]}
+          {#each [...albumGroups].slice(0, ytAlbumsVisible) as [albumName, tracks] (albumName)}
             {@const isExpanded = expandedAlbums.has(albumName)}
             {@const dlState = albumDlState(albumName, tracks)}
             {@const thumb = thumbUrl(tracks[0]?.thumbnail_url ?? '')}
@@ -371,7 +371,7 @@
                       </button>
                     {/if}
                   </div>
-                  {#each tracks as track, i}
+                  {#each tracks as track, i (i)}
                     {@const key = `${track.artist}|${track.title}`}
                     {@const isPreviewing = previewKey === key}
                     <div class="yt-track-row" class:yt-track-row--active={isPreviewing}>
@@ -427,7 +427,7 @@
         {/if}
       {:else}
         <div class="yt-results">
-          {#each youtubeResults as result}
+          {#each youtubeResults as result, i (i)}
             {@const key = `${result.artist}|${result.title}`}
             {@const isPreviewing = previewKey === key}
             <div class="yt-row" class:yt-row--active={isPreviewing}>

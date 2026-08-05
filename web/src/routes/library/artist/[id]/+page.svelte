@@ -198,7 +198,7 @@
 
         {#if context.tags.length > 0}
           <div class="chip-row">
-            {#each context.tags as tag}
+            {#each context.tags as tag, i (i)}
               <a class="chip" href="/search?q={encodeURIComponent(tag)}">{tag}</a>
             {/each}
           </div>
@@ -213,7 +213,7 @@
         {#if context.similar.length > 0}
           <div class="about-line">
             <span class="about-label">Similar</span>
-            {#each context.similar as s, i}<a class="similar-link" href="/search?q={encodeURIComponent(s.name)}">{s.name}</a>{#if i < context.similar.length - 1}<span class="sep">·</span>{/if}{/each}
+            {#each context.similar as s, i (i)}<a class="similar-link" href="/search?q={encodeURIComponent(s.name)}">{s.name}</a>{#if i < context.similar.length - 1}<span class="sep">·</span>{/if}{/each}
           </div>
         {/if}
 
@@ -264,7 +264,7 @@
       {:else}
         <p class="muted">{ytTracks.length} tracks · {albumGroups.size} album{albumGroups.size !== 1 ? 's' : ''}</p>
         <div class="yt-album-list">
-          {#each [...albumGroups].slice(0, ytAlbumsVisible) as [albumName, tracks]}
+          {#each [...albumGroups].slice(0, ytAlbumsVisible) as [albumName, tracks] (albumName)}
             {@const isExpanded = expandedAlbums.has(albumName)}
             {@const dlState = albumDlState(albumName, tracks)}
             {@const thumb = tracks[0]?.thumbnail_url}
@@ -301,7 +301,7 @@
                       </button>
                     {/if}
                   </div>
-                  {#each tracks as track, i}
+                  {#each tracks as track, i (i)}
                     {@const key = `${track.artist}|${track.title}`}
                     {@const isPreviewing = previewKey === key}
                     <div class="yt-track-row" class:yt-track-row--active={isPreviewing}>

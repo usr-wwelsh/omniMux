@@ -35,7 +35,7 @@
             <button class="np-queue-clear" onclick={clearQueue} title="Clear queue">Clear</button>
           </div>
           <div class="np-queue-list">
-            {#each $queue as track, i}
+            {#each $queue as track, i (i)}
               {#if i > $queueIndex}
                 <div class="np-queue-item">
                   <span class="np-queue-title-text">{track.title}</span>

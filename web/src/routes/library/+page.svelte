@@ -208,14 +208,14 @@
       {#if genres.length > 1}
         <select class="toolbar-select" bind:value={genreFilter} aria-label="Filter by genre">
           <option value="">All genres</option>
-          {#each genres as g}
+          {#each genres as g (g)}
             <option value={g}>{g}</option>
           {/each}
         </select>
       {/if}
 
       <select class="toolbar-select" bind:value={sortBy} aria-label="Sort albums">
-        {#each sortOptions as opt}
+        {#each sortOptions as opt (opt.value)}
           <option value={opt.value}>Sort: {opt.label}</option>
         {/each}
       </select>

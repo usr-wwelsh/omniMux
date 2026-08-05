@@ -455,7 +455,7 @@
 
         {#if context.tags.length > 0}
           <div class="chip-row">
-            {#each context.tags as tag}
+            {#each context.tags as tag, i (i)}
               <a class="chip" href="/search?q={encodeURIComponent(tag)}">{tag}</a>
             {/each}
           </div>
@@ -472,7 +472,7 @@
 
     {#if reorderMode}
       <div class="reorder-list">
-        {#each reorderedSongs as song, i}
+        {#each reorderedSongs as song, i (song.id)}
           <div
             class="reorder-row"
             class:reorder-row--dragover={dragOver === i}
@@ -544,7 +544,7 @@
           <button class="cache-all-btn" onclick={cacheAll}>Add all</button>
         </div>
         <div class="missing-tracks">
-          {#each missingTracks as track}
+          {#each missingTracks as track, i (i)}
             <div class="missing-row">
               <div class="missing-info">
                 <span class="missing-track-title">{track.title}</span>
@@ -598,7 +598,7 @@
         {:else if mergeFiltered.length === 0}
           <p class="modal-status">No albums found.</p>
         {:else}
-          {#each mergeFiltered as al}
+          {#each mergeFiltered as al (al.id)}
             <label class="modal-row" class:modal-row--selected={mergeSelected.has(al.id)}>
               <input type="checkbox" checked={mergeSelected.has(al.id)} onchange={() => toggleMerge(al.id)} />
               <div class="modal-row-info">

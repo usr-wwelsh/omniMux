@@ -27,7 +27,7 @@
     <p class="empty-text">No other active devices</p>
   {:else}
     <ul class="device-list">
-      {#each $otherDevices as device}
+      {#each $otherDevices as device (device.device_id)}
         <li class="device-item" class:reconnecting={device.is_reconnecting}>
           <div class="device-info">
             <div class="device-name">

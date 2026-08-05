@@ -106,7 +106,7 @@
         <span class="setting-desc">Choose the color scheme for the app</span>
       </div>
       <div class="theme-options">
-        {#each themes as t}
+        {#each themes as t (t.value)}
           <button
             class="theme-btn"
             class:active={$theme === t.value}
@@ -130,7 +130,7 @@
         <span class="setting-desc">Controls song selection, pacing, and mix style when Auto DJ is active</span>
       </div>
       <div class="personality-options">
-        {#each personalities as [key, config]}
+        {#each personalities as [key, config] (key)}
           <button
             class="personality-btn"
             class:active={$djPersonality === key}
@@ -196,7 +196,7 @@
         <span class="setting-desc">How often to switch visualizers in Auto DJ mode</span>
       </div>
       <div class="segment-group">
-        {#each visCycleOptions as opt}
+        {#each visCycleOptions as opt (opt.value)}
           <button
             class="segment-btn"
             class:active={$visCycleInterval === opt.value}
@@ -216,7 +216,7 @@
         <span class="setting-desc">Auto-enter fullscreen art view after this long with no interaction</span>
       </div>
       <div class="segment-group">
-        {#each ambientOptions as opt}
+        {#each ambientOptions as opt (opt.value)}
           <button
             class="segment-btn"
             class:active={$ambientIdleMinutes === opt.value}

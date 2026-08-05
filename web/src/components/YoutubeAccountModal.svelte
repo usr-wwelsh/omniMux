@@ -119,7 +119,7 @@
       </button>
     </div>
     <div class="playlist-list">
-      {#each playlists as playlist}
+      {#each playlists as playlist (playlist.id)}
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <div
           class="playlist-row"
