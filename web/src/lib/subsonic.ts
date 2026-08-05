@@ -25,7 +25,68 @@ async function withRetry<T>(
   throw lastError;
 }
 
-async function subsonicGet(endpoint: string, extra: Record<string, string | string[]> = {}): Promise<any> {
+// Shape of the wire payload as Navidrome sends it. Everything is optional
+// because the Subsonic spec lets a server omit any field it has no value for —
+// the map* helpers below are what turn this into our own strict types.
+interface RawAlbum {
+  id: string;
+  name: string;
+  artist: string;
+  artistId: string;
+  coverArt?: string;
+  songCount?: number;
+  year?: number;
+  genre?: string;
+  song?: RawSong[];
+}
+
+interface RawSong {
+  id: string;
+  title: string;
+  artist: string;
+  artistId: string;
+  album: string;
+  albumId: string;
+  coverArt?: string;
+  duration?: number;
+  track?: number;
+  year?: number;
+  genre?: string;
+  bpm?: number;
+  path?: string;
+}
+
+interface RawArtist {
+  id: string;
+  name: string;
+  albumCount?: number;
+  coverArt?: string;
+  album?: RawAlbum[];
+}
+
+interface RawPlaylist {
+  id: string;
+  name: string;
+  songCount?: number;
+  duration?: number;
+  coverArt?: string;
+  entry?: RawSong[];
+}
+
+interface SubsonicResponse {
+  status?: string;
+  error?: { message?: string };
+  artists?: { index?: { artist?: RawArtist[] }[] };
+  artist?: RawArtist;
+  album?: RawAlbum;
+  albumList2?: { album?: RawAlbum[] };
+  randomSongs?: { song?: RawSong[] };
+  searchResult3?: { artist?: RawArtist[]; album?: RawAlbum[]; song?: RawSong[] };
+  playlists?: { playlist?: RawPlaylist[] };
+  playlist?: RawPlaylist;
+}
+
+async function subsonicGet(endpoint: string, extra: Record<string, string | string[]> = {}): Promise<SubsonicResponse> {
   return withRetry(async () => {
     const { token } = get(auth);
     const params = new URLSearchParams();
@@ -40,7 +101,7 @@ async function subsonicGet(endpoint: string, extra: Record<string, string | stri
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     const data = await res.json();
-    const sr = data['subsonic-response'];
+    const sr: SubsonicResponse | undefined = data['subsonic-response'];
     if (sr?.status !== 'ok') {
       throw new Error(sr?.error?.message || 'Subsonic API error');
     }
@@ -63,11 +124,11 @@ export async function fetchItunesArtwork(artist: string, album: string): Promise
     const query = encodeURIComponent(`${artist} ${album}`);
     const res = await fetch(`https://itunes.apple.com/search?term=${query}&entity=album&limit=5`);
     if (!res.ok) return null;
-    const data = await res.json();
-    const result = data.results?.[0];
-    if (!result?.artworkUrl100) return null;
+    const data: { results?: { artworkUrl100?: string }[] } = await res.json();
+    const artwork = data.results?.[0]?.artworkUrl100;
+    if (!artwork) return null;
     // Replace 100x100bb with 3000x3000bb for maximum quality
-    return (result.artworkUrl100 as string).replace('100x100bb', '3000x3000bb');
+    return artwork.replace('100x100bb', '3000x3000bb');
   } catch {
     return null;
   }
@@ -117,19 +178,37 @@ export interface Song {
 
 export const SEARCH_SONG_PAGE_SIZE = 20;
 
-function mapAlbum(al: any): Album {
+function mapAlbum(al: RawAlbum): Album {
   return {
     id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
     coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
   };
 }
 
-function mapSong(s: any): Song {
+function mapSong(s: RawSong): Song {
   return {
     id: s.id, title: s.title, artist: s.artist, artistId: s.artistId,
     album: s.album, albumId: s.albumId, coverArt: s.coverArt,
     duration: s.duration || 0, track: s.track, year: s.year, genre: s.genre,
-    bpm: s.bpm || undefined,
+    bpm: s.bpm || undefined, path: s.path,
+  };
+}
+
+// A response that omits the entity we asked for is a server-side failure, not a
+// field we can shrug off — surface it as an error rather than a stray TypeError.
+function required<T>(value: T | undefined, what: string): T {
+  if (!value) throw new Error(`Subsonic response missing ${what}`);
+  return value;
+}
+
+function mapArtist(a: RawArtist): Artist {
+  return { id: a.id, name: a.name, albumCount: a.albumCount || 0, coverArt: a.coverArt };
+}
+
+function mapPlaylist(p: RawPlaylist): Playlist {
+  return {
+    id: p.id, name: p.name, songCount: p.songCount || 0,
+    duration: p.duration || 0, coverArt: p.coverArt,
   };
 }
 
@@ -149,12 +228,7 @@ export const subsonic = {
     const artists: Artist[] = [];
     for (const group of index) {
       for (const a of group.artist || []) {
-        artists.push({
-          id: a.id,
-          name: a.name,
-          albumCount: a.albumCount || 0,
-          coverArt: a.coverArt,
-        });
+        artists.push(mapArtist(a));
       }
     }
     return artists;
@@ -162,33 +236,19 @@ export const subsonic = {
 
   async getArtist(id: string): Promise<{ artist: Artist; albums: Album[] }> {
     const data = await subsonicGet('getArtist.view', { id });
-    const a = data.artist;
+    const a = required(data.artist, 'artist');
     return {
-      artist: { id: a.id, name: a.name, albumCount: a.albumCount || 0, coverArt: a.coverArt },
+      artist: mapArtist(a),
       albums: (a.album || []).map(mapAlbum),
     };
   },
 
   async getAlbum(id: string): Promise<{ album: Album; songs: Song[] }> {
     const data = await subsonicGet('getAlbum.view', { id });
-    const al = data.album;
+    const al = required(data.album, 'album');
     return {
       album: mapAlbum(al),
-      songs: (al.song || []).map((s: any) => ({
-        id: s.id,
-        title: s.title,
-        artist: s.artist,
-        artistId: s.artistId,
-        album: s.album,
-        albumId: s.albumId,
-        coverArt: s.coverArt,
-        duration: s.duration || 0,
-        track: s.track,
-        year: s.year,
-        genre: s.genre,
-        bpm: s.bpm || undefined,
-        path: s.path,
-      })),
+      songs: (al.song || []).map(mapSong),
     };
   },
 
@@ -197,7 +257,7 @@ export const subsonic = {
     const sr = data.searchResult3 || {};
     const name = artistName.toLowerCase();
     return (sr.album || [])
-      .filter((al: any) => al.artist?.toLowerCase() === name)
+      .filter((al) => al.artist?.toLowerCase() === name)
       .map(mapAlbum);
   },
 
@@ -205,9 +265,7 @@ export const subsonic = {
     const data = await subsonicGet('search3.view', { query, artistCount: '15', albumCount: '10', songCount: SEARCH_SONG_PAGE_SIZE.toString() });
     const sr = data.searchResult3 || {};
     return {
-      artists: (sr.artist || []).map((a: any) => ({
-        id: a.id, name: a.name, albumCount: a.albumCount || 0, coverArt: a.coverArt,
-      })),
+      artists: (sr.artist || []).map(mapArtist),
       albums: (sr.album || []).map(mapAlbum),
       songs: (sr.song || []).map(mapSong),
     };
@@ -254,12 +312,7 @@ export const subsonic = {
 
   async getRandomSongs(count = 20): Promise<Song[]> {
     const data = await subsonicGet('getRandomSongs.view', { size: count.toString() });
-    return (data.randomSongs?.song || []).map((s: any) => ({
-      id: s.id, title: s.title, artist: s.artist, artistId: s.artistId,
-      album: s.album, albumId: s.albumId, coverArt: s.coverArt,
-      duration: s.duration || 0, track: s.track, year: s.year, genre: s.genre,
-      bpm: s.bpm || undefined,
-    }));
+    return (data.randomSongs?.song || []).map(mapSong);
   },
 
   // Records a play in Navidrome's local DB. submission=false → "now playing",
@@ -282,40 +335,23 @@ export const subsonic = {
 
   async getPlaylists(): Promise<Playlist[]> {
     const data = await subsonicGet('getPlaylists.view');
-    return (data.playlists?.playlist || []).map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      songCount: p.songCount || 0,
-      duration: p.duration || 0,
-      coverArt: p.coverArt,
-    }));
+    return (data.playlists?.playlist || []).map(mapPlaylist);
   },
 
   async getPlaylistCoverArts(id: string, count = 4): Promise<string[]> {
     const data = await subsonicGet('getPlaylist.view', { id });
     return (data.playlist?.entry || [])
       .slice(0, count)
-      .filter((s: any) => s.coverArt)
-      .map((s: any) => s.coverArt as string);
+      .map((s) => s.coverArt)
+      .filter((art): art is string => Boolean(art));
   },
 
   async getPlaylist(id: string): Promise<{ playlist: Playlist; songs: Song[] }> {
     const data = await subsonicGet('getPlaylist.view', { id });
-    const p = data.playlist;
+    const p = required(data.playlist, 'playlist');
     return {
-      playlist: {
-        id: p.id,
-        name: p.name,
-        songCount: p.songCount || 0,
-        duration: p.duration || 0,
-        coverArt: p.coverArt,
-      },
-      songs: (p.entry || []).map((s: any) => ({
-        id: s.id, title: s.title, artist: s.artist, artistId: s.artistId,
-        album: s.album, albumId: s.albumId, coverArt: s.coverArt,
-        duration: s.duration || 0, track: s.track, year: s.year, genre: s.genre,
-        bpm: s.bpm || undefined,
-      })),
+      playlist: mapPlaylist(p),
+      songs: (p.entry || []).map(mapSong),
     };
   },
 
@@ -323,14 +359,7 @@ export const subsonic = {
     const params: Record<string, string | string[]> = { name };
     if (songIds.length > 0) params.songId = songIds;
     const data = await subsonicGet('createPlaylist.view', params);
-    const p = data.playlist;
-    return {
-      id: p.id,
-      name: p.name,
-      songCount: p.songCount || 0,
-      duration: p.duration || 0,
-      coverArt: p.coverArt,
-    };
+    return mapPlaylist(required(data.playlist, 'playlist'));
   },
 
   async renamePlaylist(id: string, name: string): Promise<void> {
