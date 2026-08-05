@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { currentTrack, isPlaying, currentTime, duration, shuffle, loop, togglePlay, playNext, toggleShuffle, cycleLoop, formatTime, activeDeviceId, localDeviceId, claimPlayback } from '$lib/stores/player';
+  import { currentTrack, isPlaying, currentTime, duration, shuffle, loop, togglePlay, playNext, toggleShuffle, cycleLoop, activeDeviceId, localDeviceId, claimPlayback } from '$lib/stores/player';
   import { otherDevices } from '$lib/stores/devices';
   import { showFullscreenPlayer } from '$lib/stores/ui';
   import DevicesPopover from './DevicesPopover.svelte';

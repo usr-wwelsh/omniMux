@@ -3,7 +3,6 @@
   import { replaceState } from '$app/navigation';
   import { api, thumbUrl, type YouTubeResult } from '$lib/api';
   import { subsonic, SEARCH_SONG_PAGE_SIZE, type Artist, type Album, type Song } from '$lib/subsonic';
-  import { playSong, formatTime } from '$lib/stores/player';
   import { isGuest } from '$lib/auth';
   import TrackList from '../../components/TrackList.svelte';
   import AlbumCard from '../../components/AlbumCard.svelte';
@@ -25,7 +24,6 @@
   let loadingMoreSongs = $state(false);
   let previewKey = $state<string | null>(null);
   let previewYtId = $state<string | null>(null);
-  let previewLoading = $state<string | null>(null);
 
   const albumGroups = $derived.by(() => {
     const hasAlbums = youtubeResults.some(r => r.album);
@@ -236,14 +234,8 @@
       previewYtId = null;
       return;
     }
-    previewLoading = key;
-    previewKey = null;
-    previewYtId = null;
-    try {
-      previewKey = key;
-      previewYtId = track.youtube_id;
-    } catch {}
-    previewLoading = null;
+    previewKey = key;
+    previewYtId = track.youtube_id;
   }
 </script>
 

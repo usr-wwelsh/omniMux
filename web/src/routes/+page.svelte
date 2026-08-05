@@ -3,7 +3,7 @@
   import AlbumCard from '../components/AlbumCard.svelte';
   import TrackList from '../components/TrackList.svelte';
   import { otherDevices, listenHere } from '$lib/stores/devices';
-  import { addToQueue, currentTrack } from '$lib/stores/player';
+  import { addToQueue } from '$lib/stores/player';
   import { streamUrl } from '$lib/subsonic';
   import { autoDJActive, toggleAutoDJ } from '$lib/stores/autodj';
   import { isGuest } from '$lib/auth';

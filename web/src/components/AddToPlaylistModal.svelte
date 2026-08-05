@@ -84,7 +84,6 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="modal-backdrop" onclick={close}></div>
-  <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div class="modal" role="dialog" aria-modal="true" onkeydown={handleKeydown}>
     <div class="modal-header">
       <span class="modal-title">Add to playlist</span>

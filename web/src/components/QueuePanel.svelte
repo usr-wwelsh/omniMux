@@ -70,7 +70,7 @@
     }
   }
 
-  function onTouchEnd(e: TouchEvent) {
+  function onTouchEnd() {
     document.removeEventListener('touchmove', onTouchMove);
     document.removeEventListener('touchend', onTouchEnd);
     if (touchActive && touchDragging !== -1 && touchDragOver !== -1 && touchDragging !== touchDragOver) {

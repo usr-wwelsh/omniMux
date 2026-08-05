@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { currentTrack, queue, queueIndex, clearQueue, formatTime } from '$lib/stores/player';
+  import { currentTrack, queue, queueIndex, clearQueue } from '$lib/stores/player';
   import { nowPlayingCollapsed } from '$lib/stores/ui';
 </script>
 

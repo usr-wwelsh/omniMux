@@ -1,4 +1,4 @@
-import { writable, derived, get } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import { streamUrl, coverArtUrl, fetchItunesArtwork, subsonic, type Song } from '../subsonic';
 import { auth } from '../auth';
 import { api } from '../api';

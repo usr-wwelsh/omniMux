@@ -7,7 +7,7 @@
   } from '$lib/stores/player';
   import { otherDevices } from '$lib/stores/devices';
   import { showFullscreenPlayer, artModeActive, artExpandRequested, autoDJToast } from '$lib/stores/ui';
-  import { autoDJActive, advanceVis, visCyclingPaused } from '$lib/stores/autodj';
+  import { autoDJActive, visCyclingPaused } from '$lib/stores/autodj';
   import { onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
   import { dragBar } from '$lib/dragBar';
@@ -704,7 +704,6 @@ void main() {
         bind:this={artImg}
       />
       {#if isCanvasMode}
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
         <canvas class="fs-vis-canvas" bind:this={visCanvas}></canvas>
       {/if}
     </div>
@@ -760,8 +759,6 @@ void main() {
       {#if artExpanded}
         <div class="vis-mode-picker">
           {#each VIS_MODES as m}
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <button
               class="vis-mode-btn"
               class:active={$visMode === m}
@@ -769,8 +766,6 @@ void main() {
             >{m.charAt(0).toUpperCase() + m.slice(1)}</button>
           {/each}
           <!-- Cycling toggle — pauses/resumes auto-vis-cycling, disabled when vis is off -->
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <button
             class="vis-mode-btn vis-cycle-toggle"
             class:cycling-on={!$visCyclingPaused && $visMode !== 'off'}

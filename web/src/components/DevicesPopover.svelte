@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { otherDevices, listenHere, type DeviceSession } from '$lib/stores/devices';
+  import { otherDevices, listenHere } from '$lib/stores/devices';
   import { soloMode } from '$lib/stores/player';
 
   let { onclose }: { onclose: () => void } = $props();
@@ -18,7 +18,6 @@
   <div class="solo-row">
     <span class="solo-label">Play independently</span>
     <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="solo-toggle" class:on={$soloMode} onclick={() => soloMode.update((v) => !v)} role="switch" aria-checked={$soloMode}>
       <div class="solo-thumb"></div>
     </div>
