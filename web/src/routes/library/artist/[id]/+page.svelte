@@ -242,7 +242,7 @@
         </div>
         <p class="muted">{artist.albumCount} album{artist.albumCount !== 1 ? 's' : ''}</p>
         <div class="album-grid">
-          {#each visibleAlbums as album}
+          {#each visibleAlbums as album (album.id)}
             <AlbumCard {album} />
           {/each}
         </div>

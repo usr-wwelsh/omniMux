@@ -129,7 +129,7 @@
     <section class="section">
       <h2 class="section-title">In Your Library</h2>
       <div class="album-grid">
-        {#each libraryAlbums as album}
+        {#each libraryAlbums as album (album.id)}
           <AlbumCard {album} />
         {/each}
       </div>

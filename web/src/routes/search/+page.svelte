@@ -300,7 +300,7 @@
       {#if libraryAlbums.length > 0}
         <h3 class="subsection-title">Albums</h3>
         <div class="album-grid">
-          {#each libraryAlbums as album}
+          {#each libraryAlbums as album (album.id)}
             <AlbumCard {album} />
           {/each}
         </div>

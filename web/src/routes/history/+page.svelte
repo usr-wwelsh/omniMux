@@ -51,7 +51,7 @@
       <section class="section">
         <h2 class="section-title">Recently played</h2>
         <div class="album-grid">
-          {#each recent as album}
+          {#each recent as album (album.id)}
             <AlbumCard {album} />
           {/each}
         </div>
@@ -62,7 +62,7 @@
       <section class="section">
         <h2 class="section-title">Most played</h2>
         <div class="album-grid">
-          {#each mostPlayed as album}
+          {#each mostPlayed as album (album.id)}
             <AlbumCard {album} />
           {/each}
         </div>

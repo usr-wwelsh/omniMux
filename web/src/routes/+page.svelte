@@ -107,7 +107,7 @@
           <a href="/history" class="see-all">History →</a>
         </div>
         <div class="album-grid">
-          {#each recentAlbums as album}
+          {#each recentAlbums as album (album.id)}
             <AlbumCard {album} />
           {/each}
         </div>
@@ -132,7 +132,7 @@
               </div>
             {/each}
           {:else}
-            {#each randomAlbums as album}
+            {#each randomAlbums as album (album.id)}
               <AlbumCard {album} />
             {/each}
           {/if}
