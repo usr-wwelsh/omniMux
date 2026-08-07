@@ -1,26 +1,37 @@
 <script lang="ts">
-  import { page } from '$app/state';
   import { replaceState } from '$app/navigation';
   import { api, thumbUrl, type YouTubeResult } from '$lib/api';
   import { subsonic, SEARCH_SONG_PAGE_SIZE, type Artist, type Album, type Song } from '$lib/subsonic';
   import { isGuest } from '$lib/auth';
+  import { cachedSearch, rememberSearch, forgetSearch, lastSearch } from '$lib/stores/searchCache';
+  import { invalidateLibrary } from '$lib/stores/libraryCache';
   import TrackList from '../../components/TrackList.svelte';
   import AlbumCard from '../../components/AlbumCard.svelte';
 
-  let query = $state(page.url.searchParams.get('q') ?? '');
-  let libraryArtists = $state<Artist[]>([]);
-  let libraryAlbums = $state<Album[]>([]);
-  let librarySongs = $state<Song[]>([]);
-  let youtubeResults = $state<YouTubeResult[]>([]);
-  let cachedIds = $state<Set<string>>(new Set());
+  // page.url still reads /search after history restores an entry whose query was
+  // put there by replaceState, so the address bar is the honest source here.
+  const urlQuery = new URLSearchParams(location.search).get('q') ?? '';
+
+  // Coming back to a search should show the results you left, not run it again —
+  // and the Search tab links to a bare /search, so an absent query means "wherever
+  // I was", not "start over".
+  const restored = urlQuery ? cachedSearch(urlQuery) : lastSearch();
+  const initialQuery = restored?.query ?? urlQuery;
+  let query = $state(initialQuery);
+
+  let libraryArtists = $state<Artist[]>(restored?.libraryArtists ?? []);
+  let libraryAlbums = $state<Album[]>(restored?.libraryAlbums ?? []);
+  let librarySongs = $state<Song[]>(restored?.librarySongs ?? []);
+  let youtubeResults = $state<YouTubeResult[]>(restored?.youtubeResults ?? []);
+  let cachedIds = $state<Set<string>>(new Set(restored?.cachedIds ?? []));
   let downloadingIds = $state<Map<string, number>>(new Map());
   let searching = $state(false);
   let searchFailed = $state(false);
   let errorIds = $state<Set<string>>(new Set());
-  let expandedAlbums = $state<Set<string>>(new Set());
+  let expandedAlbums = $state<Set<string>>(new Set(restored?.expandedAlbums ?? []));
   let downloadingAlbumIds = $state<Set<string>>(new Set());
-  let ytAlbumsVisible = $state(5);
-  let librarySongsHasMore = $state(false);
+  let ytAlbumsVisible = $state(restored?.ytAlbumsVisible ?? 5);
+  let librarySongsHasMore = $state(restored?.librarySongsHasMore ?? false);
   let loadingMoreSongs = $state(false);
   let previewKey = $state<string | null>(null);
   let previewYtId = $state<string | null>(null);
@@ -76,6 +87,8 @@
       librarySongsHasMore = false;
       youtubeResults = [];
       searchFailed = false;
+      // Emptying the box means the results are gone for good, not parked.
+      forgetSearch();
       syncQueryToUrl();
       return;
     }
@@ -92,7 +105,7 @@
   // Keep ?q= in the URL so back/refresh/share restore the search
   function syncQueryToUrl() {
     const trimmed = query.trim();
-    if (page.url.searchParams.get('q') === (trimmed || null)) return;
+    if (new URLSearchParams(location.search).get('q') === (trimmed || null)) return;
     try {
       replaceState(trimmed ? `/search?q=${encodeURIComponent(trimmed)}` : '/search', {});
     } catch {
@@ -101,13 +114,33 @@
   }
 
   // Fire immediately if navigated here with ?q= from discover
-  if (query.length >= 2) doSearch();
+  if (!restored && query.length >= 2) doSearch();
+
+  // A restored search that arrived without ?q= puts it back, so the URL still
+  // describes the page and reloading or sharing it works.
+  $effect(() => {
+    if (restored && !urlQuery) syncQueryToUrl();
+  });
 
   function toggleAlbum(albumName: string) {
     const next = new Set(expandedAlbums);
     if (next.has(albumName)) next.delete(albumName);
     else next.add(albumName);
     expandedAlbums = next;
+    persistSearch();
+  }
+
+  // Snapshot whatever is on screen, so leaving and coming back restores it.
+  function persistSearch() {
+    if (query.trim().length < 2) return;
+    rememberSearch({
+      query,
+      libraryArtists, libraryAlbums, librarySongs, librarySongsHasMore,
+      youtubeResults,
+      cachedIds: [...cachedIds],
+      expandedAlbums: [...expandedAlbums],
+      ytAlbumsVisible,
+    });
   }
 
   async function downloadAlbumTracks(albumName: string, tracks: YouTubeResult[]) {
@@ -151,6 +184,7 @@
         cachedIds = new Set(cached);
       }
       saveRecentSearch(query);
+      persistSearch();
     } catch {
       searchFailed = true;
     } finally {
@@ -165,6 +199,7 @@
       const more = await subsonic.searchMoreSongs(query, librarySongs.length);
       librarySongs = [...librarySongs, ...more];
       librarySongsHasMore = more.length === SEARCH_SONG_PAGE_SIZE;
+      persistSearch();
     } catch {
       librarySongsHasMore = false;
     } finally {
@@ -179,6 +214,7 @@
       const resp = await api.startDownload(result.url, result.youtube_id, result.title, result.artist, result.album || undefined);
       if (resp.already_cached) {
         cachedIds = new Set([...cachedIds, result.youtube_id]);
+        persistSearch();
       } else {
         downloadingIds = new Map([...downloadingIds, [result.youtube_id, resp.download_id]]);
         pollDownload(result.youtube_id, resp.download_id);
@@ -199,6 +235,9 @@
           downloadingIds.delete(ytId);
           downloadingIds = new Map(downloadingIds);
           cachedIds = new Set([...cachedIds, ytId]);
+          persistSearch();
+          // New music landed, so the cached library no longer has everything.
+          invalidateLibrary();
         } else if (status.status === 'failed') {
           clearInterval(interval);
           downloadingIds.delete(ytId);
@@ -421,7 +460,7 @@
           {/each}
         </div>
         {#if ytAlbumsVisible < albumGroups.size}
-          <button class="show-more-btn" onclick={() => ytAlbumsVisible += 10}>
+          <button class="show-more-btn" onclick={() => { ytAlbumsVisible += 10; persistSearch(); }}>
             Show more ({albumGroups.size - ytAlbumsVisible} remaining)
           </button>
         {/if}
