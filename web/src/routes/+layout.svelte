@@ -1,8 +1,9 @@
 <script lang="ts">
   import '../app.css';
   import { auth, isGuest } from '$lib/auth';
-  import { goto } from '$app/navigation';
+  import { goto, beforeNavigate, afterNavigate } from '$app/navigation';
   import { page } from '$app/state';
+  import { scrollKey, rememberScroll, recallScroll, restoreScroll } from '$lib/scrollMemory';
   import Sidebar from '../components/Sidebar.svelte';
   import BottomNav from '../components/BottomNav.svelte';
   import Player from '../components/Player.svelte';
@@ -31,6 +32,22 @@
   let { children } = $props();
 
   let isMobile = $state(false);
+
+  // The page scrolls inside .content-scroll rather than the window, so SvelteKit's
+  // scroll handling never applies: back/forward has to be restored by hand, and a
+  // fresh navigation has to be reset to the top.
+  let scroller = $state<HTMLElement | null>(null);
+
+  beforeNavigate((nav) => {
+    if (scroller && nav.from) rememberScroll(scrollKey(nav.from.url), scroller.scrollTop);
+  });
+
+  // Any page we have been to is restored, not just history navigations: the nav
+  // tabs are links, and tapping "Library" is how most people go back to it.
+  afterNavigate((nav) => {
+    if (!scroller || !nav.to) return;
+    restoreScroll(scroller, recallScroll(scrollKey(nav.to.url)) ?? 0);
+  });
 
   $effect(() => {
     if (typeof window !== 'undefined') {
@@ -127,7 +144,7 @@
     {/if}
 
     <main class="main-content">
-      <div class="content-scroll">
+      <div class="content-scroll" bind:this={scroller}>
         {#if $isGuest}
           <GuestBanner />
         {/if}
