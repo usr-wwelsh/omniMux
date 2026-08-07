@@ -5,6 +5,7 @@
   import { onMount } from 'svelte';
   import { api, type DownloadStatus } from '$lib/api';
   import { isGuest } from '$lib/auth';
+  import { invalidateLibrary } from '$lib/stores/libraryCache';
   import YoutubeAccountModal from '../../components/YoutubeAccountModal.svelte';
 
   onMount(() => {
@@ -14,6 +15,9 @@
   let downloads = $state<DownloadStatus[]>([]);
   let loading = $state(true);
   let pollInterval: ReturnType<typeof setInterval>;
+  // null until the first poll: the downloads already finished before this page
+  // was opened are not news the library cache needs to hear about.
+  let completedSeen: number | null = null;
 
   let playlistUrl = $state('');
   let playlistName = $state('');
@@ -35,6 +39,9 @@
   async function loadDownloads() {
     try {
       downloads = await api.getDownloads();
+      const completed = downloads.filter((d) => d.status === 'completed').length;
+      if (completedSeen !== null && completed > completedSeen) invalidateLibrary();
+      completedSeen = completed;
     } catch {
       // ignore
     } finally {

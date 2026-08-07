@@ -1,14 +1,18 @@
 <script lang="ts">
   import { subsonic, type Artist, type Album, type Song } from '$lib/subsonic';
   import { playQueue } from '$lib/stores/player';
+  import {
+    cachedLibrary, loadLibrary, refreshLibrary, isStale,
+    rememberRanking, recalledRanking, libraryView, type SortKey,
+  } from '$lib/stores/libraryCache';
   import AlbumCard from '../../components/AlbumCard.svelte';
 
-  let albums = $state<Album[]>([]);
-  let artists = $state<(Artist & { coverUrl?: string })[]>([]);
-  let loading = $state(true);
-  let shuffling = $state(false);
+  const cached = cachedLibrary();
 
-  type SortKey = 'name' | 'artist' | 'added' | 'year' | 'played' | 'plays';
+  let albums = $state<Album[]>(cached?.albums ?? []);
+  let artists = $state<(Artist & { coverUrl?: string })[]>(cached?.artists ?? []);
+  let loading = $state(cached === null);
+  let shuffling = $state(false);
 
   const sortOptions: { value: SortKey; label: string }[] = [
     { value: 'name', label: 'Name' },
@@ -19,9 +23,10 @@
     { value: 'plays', label: 'Most played' },
   ];
 
-  let filter = $state('');
-  let sortBy = $state<SortKey>('name');
-  let genreFilter = $state('');
+  // Toolbar state lives in the store so it survives leaving and coming back.
+  let filter = $derived($libraryView.filter);
+  let sortBy = $derived($libraryView.sortBy);
+  let genreFilter = $derived($libraryView.genreFilter);
 
   // Genres come from the loaded albums rather than getGenres.view — no extra
   // request, and the list only ever offers genres you actually own.
@@ -42,7 +47,13 @@
     plays: 'frequent',
   };
 
-  let rankings = $state<Partial<Record<SortKey, Map<string, number>>>>({});
+  let rankings = $state<Partial<Record<SortKey, Map<string, number>>>>({
+    ...(cached ? Object.fromEntries(
+      (Object.keys(SERVER_SORTS) as SortKey[])
+        .map((k) => [k, recalledRanking(k)])
+        .filter(([, rank]) => rank),
+    ) : {}),
+  });
   let rankLoading = $state(false);
 
   async function ensureRanking(key: SortKey) {
@@ -51,7 +62,9 @@
     rankLoading = true;
     try {
       const ordered = await subsonic.getAlbumsByType(type);
-      rankings = { ...rankings, [key]: new Map(ordered.map((a, i) => [a.id, i])) };
+      const rank = new Map(ordered.map((a, i) => [a.id, i]));
+      rememberRanking(key, rank);
+      rankings = { ...rankings, [key]: rank };
     } catch {
       // Leave unranked — the list falls back to name order below.
     } finally {
@@ -109,29 +122,35 @@
   const isFiltered = $derived(filter.trim() !== '' || genreFilter !== '');
 
   function clearFilters() {
-    filter = '';
-    genreFilter = '';
+    libraryView.update((v) => ({ ...v, filter: '', genreFilter: '' }));
   }
 
   $effect(() => {
     load();
   });
 
+  // A cached library renders straight away and is only re-fetched in the
+  // background once it has had time to go out of date.
   async function load() {
+    const snapshot = cachedLibrary();
+    if (snapshot) {
+      if (isStale(snapshot)) apply(await refreshLibrary());
+      return;
+    }
     loading = true;
     try {
-      const [rawAlbums, rawArtists] = await Promise.all([
-        subsonic.getAllAlbums(),
-        subsonic.getArtists(),
-      ]);
-      albums = rawAlbums;
-      artists = rawArtists;
+      apply(await loadLibrary());
     } catch {
       albums = [];
       artists = [];
     } finally {
       loading = false;
     }
+  }
+
+  function apply(snapshot: { albums: Album[]; artists: Artist[] }) {
+    albums = snapshot.albums;
+    artists = snapshot.artists;
   }
 
   const SHUFFLE_SONG_LIMIT = 500;
@@ -201,12 +220,12 @@
           class="filter-input"
           type="search"
           placeholder="Filter by album or artist..."
-          bind:value={filter}
+          bind:value={$libraryView.filter}
         />
       </div>
 
       {#if genres.length > 1}
-        <select class="toolbar-select" bind:value={genreFilter} aria-label="Filter by genre">
+        <select class="toolbar-select" bind:value={$libraryView.genreFilter} aria-label="Filter by genre">
           <option value="">All genres</option>
           {#each genres as g (g)}
             <option value={g}>{g}</option>
@@ -214,7 +233,7 @@
         </select>
       {/if}
 
-      <select class="toolbar-select" bind:value={sortBy} aria-label="Sort albums">
+      <select class="toolbar-select" bind:value={$libraryView.sortBy} aria-label="Sort albums">
         {#each sortOptions as opt (opt.value)}
           <option value={opt.value}>Sort: {opt.label}</option>
         {/each}

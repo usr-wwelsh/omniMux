@@ -5,6 +5,7 @@
   import { isGuest } from '$lib/auth';
   import { onMount } from 'svelte';
   import { api, type TaggerTrack } from '$lib/api';
+  import { invalidateLibrary } from '$lib/stores/libraryCache';
 
   let retagging = $state(false);
   let undoing = $state(false);
@@ -156,6 +157,7 @@
       saveResult = `Deleted ${result.deleted} track${result.deleted !== 1 ? 's' : ''}${result.errors.length ? ` · ${result.errors.length} error(s)` : ''}.`;
       tracks = tracks.filter((t) => !paths.includes(t.file_path));
       selected = new Set();
+      invalidateLibrary();
     } catch (e) {
       saveResult = `Error: ${errorMessage(e)}`;
     } finally {

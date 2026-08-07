@@ -3,6 +3,7 @@
   import { errorMessage } from '$lib/errors';
   import { api, type YouTubeResult, type AlbumContext } from '$lib/api';
   import { isGuest } from '$lib/auth';
+  import { invalidateLibrary } from '$lib/stores/libraryCache';
   import TrackList from '../../../../components/TrackList.svelte';
 
   // --- merge modal state ---
@@ -85,6 +86,8 @@
         ? `Merged ${r.merged} tracks. Errors: ${r.errors.join(', ')}`
         : `Merged ${r.merged} tracks into "${album.name}".`;
       mergeSelected = new Set();
+      // Albums just disappeared into this one — the cached list is wrong now.
+      invalidateLibrary();
     } catch (e) {
       mergeResult = `Error: ${errorMessage(e)}`;
     } finally {
