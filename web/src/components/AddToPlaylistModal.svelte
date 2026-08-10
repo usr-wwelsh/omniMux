@@ -85,10 +85,10 @@
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="modal-backdrop" onclick={close}></div>
-  <div class="modal" role="dialog" aria-modal="true" onkeydown={handleKeydown}>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Add to playlist" tabindex="-1" onkeydown={handleKeydown}>
     <div class="modal-header">
       <span class="modal-title">Add to playlist</span>
-      <button class="close-btn" onclick={close}>
+      <button class="close-btn" aria-label="Close" onclick={close}>
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
       </button>
     </div>

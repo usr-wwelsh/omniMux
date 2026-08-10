@@ -576,14 +576,14 @@
 </div>
 
 {#if mergeOpen}
-  <div class="modal-backdrop" onclick={() => (mergeOpen = false)} role="presentation">
-    <div class="modal" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+  <div class="modal-backdrop" onclick={(e) => e.target === e.currentTarget && (mergeOpen = false)} role="presentation">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="merge-title" tabindex="-1">
       <div class="modal-header">
         <div>
-          <h2 class="modal-title">Merge into "{album?.name}"</h2>
+          <h2 class="modal-title" id="merge-title">Merge into "{album?.name}"</h2>
           <p class="modal-sub">Selected albums' tracks will be retagged to match this album.</p>
         </div>
-        <button class="modal-close" onclick={() => (mergeOpen = false)}>
+        <button class="modal-close" aria-label="Close" onclick={() => (mergeOpen = false)}>
           <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
       </div>

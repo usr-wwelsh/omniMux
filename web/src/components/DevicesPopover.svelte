@@ -11,16 +11,23 @@
 <div class="devices-popover">
   <div class="popover-header">
     <span>Devices</span>
-    <button class="close-btn" onclick={onclose}>
+    <button class="close-btn" aria-label="Close" onclick={onclose}>
       <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
     </button>
   </div>
   <div class="solo-row">
-    <span class="solo-label">Play independently</span>
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="solo-toggle" class:on={$soloMode} onclick={() => soloMode.update((v) => !v)} role="switch" aria-checked={$soloMode}>
+    <span class="solo-label" id="solo-label">Play independently</span>
+    <button
+      type="button"
+      class="solo-toggle"
+      class:on={$soloMode}
+      onclick={() => soloMode.update((v) => !v)}
+      role="switch"
+      aria-checked={$soloMode}
+      aria-labelledby="solo-label"
+    >
       <div class="solo-thumb"></div>
-    </div>
+    </button>
   </div>
 
   {#if $otherDevices.length === 0}
@@ -117,6 +124,8 @@
   .solo-toggle {
     width: 34px;
     height: 18px;
+    padding: 0;
+    border: none;
     background: var(--bg-highlight);
     border-radius: 9px;
     position: relative;

@@ -79,10 +79,10 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="modal-backdrop" onclick={onclose}></div>
-<div class="modal" role="dialog" aria-modal="true" onkeydown={handleKeydown}>
+<div class="modal" role="dialog" aria-modal="true" aria-label="Import from YouTube Channel" tabindex="-1" onkeydown={handleKeydown}>
   <div class="modal-header">
     <span class="modal-title">Import from YouTube Channel</span>
-    <button class="close-btn" onclick={onclose}>
+    <button class="close-btn" aria-label="Close" onclick={onclose}>
       <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
     </button>
   </div>
@@ -121,8 +121,8 @@
     </div>
     <div class="playlist-list">
       {#each playlists as playlist (playlist.id)}
-        <!-- svelte-ignore a11y_click_events_have_key_events -->
-        <div
+        <button
+          type="button"
           class="playlist-row"
           class:selected={selected.has(playlist.id)}
           onclick={() => togglePlaylist(playlist.id)}
@@ -138,7 +138,7 @@
           {#if playlist.track_count > 0}
             <span class="row-count">{playlist.track_count}</span>
           {/if}
-        </div>
+        </button>
       {/each}
     </div>
     {#if importError}
@@ -335,7 +335,13 @@
     display: flex;
     align-items: center;
     gap: 10px;
+    width: 100%;
     padding: 9px 12px;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
     border-bottom: 1px solid var(--bg-highlight);
     transition: background 0.1s;
