@@ -10,7 +10,9 @@ services:
       ND_SCANSCHEDULE: "@every 1h"
       ND_LOGLEVEL: warn
       ND_BASEURL: ""
-      ND_IMAGECACHESIZE: "10MB"
+      # Every miss here is a re-resize, and enough simultaneous re-resizes is
+      # what makes Navidrome start rejecting artwork requests outright.
+      ND_IMAGECACHESIZE: "500MB"
       ND_TRANSCODINGCACHESIZE: "0"
     restart: unless-stopped
 
