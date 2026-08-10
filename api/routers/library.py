@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 import httpx
@@ -10,6 +11,41 @@ from services.navidrome import SUBSONIC_AUTH_KEYS, subsonic_auth_params
 NAVIDROME_URL = os.environ.get("NAVIDROME_URL", "http://localhost:4533")
 
 router = APIRouter()
+
+# Navidrome meters its own artwork work and answers the overflow with 429 rather
+# than queueing it. A library page asks for every album's cover at once, so
+# without metering here a large library turns most of its own cards into broken
+# images. Requests wait for a slot instead, and a rejection that slips through
+# anyway is retried rather than handed to the browser.
+_COVER_CONCURRENCY = int(os.environ.get("COVER_MAX_CONCURRENCY", "4"))
+_COVER_RETRY_DELAYS = (0.2, 0.6, 1.2)
+_COVER_RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
+
+_cover_slots = asyncio.Semaphore(_COVER_CONCURRENCY)
+
+# One pooled client for cover art: a client per request means a fresh connection
+# per cover, which is its own source of exhaustion under the same burst.
+_cover_client: httpx.AsyncClient | None = None
+
+
+def _shared_client() -> httpx.AsyncClient:
+    global _cover_client
+    if _cover_client is None:
+        _cover_client = httpx.AsyncClient(
+            timeout=30,
+            limits=httpx.Limits(
+                max_connections=_COVER_CONCURRENCY * 2,
+                max_keepalive_connections=_COVER_CONCURRENCY,
+            ),
+        )
+    return _cover_client
+
+
+async def close_shared_client() -> None:
+    global _cover_client
+    if _cover_client is not None:
+        await _cover_client.aclose()
+        _cover_client = None
 
 # Subsonic endpoints that mutate state — this proxy is otherwise a transparent
 # passthrough, so guest accounts must be blocked from these explicitly.
@@ -87,6 +123,19 @@ async def stream(
     return StreamingResponse(body(), status_code=upstream.status_code, headers=passthrough)
 
 
+async def _fetch_cover(params: dict) -> httpx.Response:
+    """Fetch cover art from Navidrome, holding a concurrency slot for each
+    attempt and retrying the statuses that mean "busy" rather than "no art"."""
+    client = _shared_client()
+    for delay in (*_COVER_RETRY_DELAYS, None):
+        async with _cover_slots:
+            resp = await client.get(f"{NAVIDROME_URL}/rest/getCoverArt.view", params=params)
+        if delay is None or resp.status_code not in _COVER_RETRY_STATUS:
+            return resp
+        await asyncio.sleep(delay)
+    return resp
+
+
 @router.get("/library/cover/{cover_id}")
 async def cover(
     cover_id: str,
@@ -98,8 +147,7 @@ async def cover(
     params["id"] = cover_id
     if (size := request.query_params.get("size")) is not None:
         params["size"] = size
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.get(f"{NAVIDROME_URL}/rest/getCoverArt.view", params=params)
+    resp = await _fetch_cover(params)
     if resp.status_code != 200:
         raise HTTPException(status_code=resp.status_code, detail="Cover art unavailable")
     return Response(

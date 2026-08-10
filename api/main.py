@@ -39,6 +39,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     await _recover_stuck_downloads()
     yield
+    await library.close_shared_client()
 
 
 app = FastAPI(title="omniMux API", version="0.1.0", lifespan=lifespan)
