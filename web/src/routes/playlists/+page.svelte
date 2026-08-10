@@ -4,6 +4,7 @@
   import { subsonic, type Playlist, coverArtUrl } from '$lib/subsonic';
   import { api } from '$lib/api';
   import { isGuest } from '$lib/auth';
+  import { focusOnMount } from '$lib/focusOnMount';
 
   let playlists = $state<Playlist[]>([]);
   let loading = $state(true);
@@ -102,7 +103,7 @@
           placeholder="Playlist name"
           bind:value={newPlaylistName}
           onkeydown={(e) => e.key === 'Enter' && createPlaylist()}
-          autofocus
+          use:focusOnMount
         />
         <button class="sync-btn" onclick={createPlaylist} disabled={!newPlaylistName.trim()}>Create</button>
         <button class="sync-btn" onclick={() => (creatingPlaylist = false)}>Cancel</button>

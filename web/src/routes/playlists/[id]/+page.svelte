@@ -4,6 +4,7 @@
   import { goto } from '$app/navigation';
   import { subsonic, type Playlist, type Song } from '$lib/subsonic';
   import { isGuest } from '$lib/auth';
+  import { focusOnMount } from '$lib/focusOnMount';
   import TrackList from '../../../components/TrackList.svelte';
 
   let playlist = $state<Playlist | null>(null);
@@ -101,7 +102,7 @@
             bind:value={nameInput}
             onblur={saveName}
             onkeydown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') editingName = false; }}
-            autofocus
+            use:focusOnMount
           />
         {:else}
           <h1 class="page-title">

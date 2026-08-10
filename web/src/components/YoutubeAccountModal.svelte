@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, type ChannelPlaylist } from '$lib/api';
   import { errorMessage } from '$lib/errors';
+  import { focusOnMount } from '$lib/focusOnMount';
 
   let { onclose, onimported }: {
     onclose: () => void;
@@ -95,7 +96,7 @@
         placeholder="https://www.youtube.com/@ChannelName/playlists"
         bind:value={channelUrl}
         onkeydown={(e) => e.key === 'Enter' && fetchPlaylists()}
-        autofocus
+        use:focusOnMount
       />
       <button class="action-btn" onclick={fetchPlaylists} disabled={!channelUrl.trim()}>
         Fetch Playlists

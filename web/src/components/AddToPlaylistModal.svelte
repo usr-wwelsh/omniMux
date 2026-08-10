@@ -1,6 +1,7 @@
 <script lang="ts">
   import { subsonic, type Playlist } from '$lib/subsonic';
   import { addToPlaylistTarget } from '$lib/stores/ui';
+  import { focusOnMount } from '$lib/focusOnMount';
 
   let song = $derived($addToPlaylistTarget);
 
@@ -101,7 +102,7 @@
           placeholder="Playlist name"
           bind:value={newName}
           onkeydown={(e) => e.key === 'Enter' && createAndAdd()}
-          autofocus
+          use:focusOnMount
         />
         <button class="action-btn" onclick={createAndAdd} disabled={!newName.trim()}>Create</button>
       </div>
