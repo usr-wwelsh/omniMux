@@ -268,7 +268,6 @@
   const BUFFER_ROWS = 10;
   let scrollTop = $state(0);
   let containerHeight = $state(0);
-  let tableContainer: HTMLDivElement;
 
   function handleScroll(e: Event) {
     const target = e.target as HTMLDivElement;
@@ -350,7 +349,6 @@
   {:else}
     <div
       class="table-wrap"
-      bind:this={tableContainer}
       bind:clientHeight={containerHeight}
       onscroll={handleScroll}
     >

@@ -114,7 +114,7 @@
   }
 
   // Fire immediately if navigated here with ?q= from discover
-  if (!restored && query.length >= 2) doSearch();
+  if (!restored && initialQuery.length >= 2) doSearch();
 
   // A restored search that arrived without ?q= puts it back, so the URL still
   // describes the page and reloading or sharing it works.
