@@ -37,7 +37,7 @@
   let touchDragOver = $state(-1);
   let touchStartY = 0;
   let touchStartX = 0;
-  let touchActive = false;
+  let touchActive = $state(false);
 
   function onHandleTouchStart(e: TouchEvent, i: number) {
     e.stopPropagation(); // prevent fullscreen swipe-to-close
