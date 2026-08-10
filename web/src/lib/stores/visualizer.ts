@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 import { getAudio } from './player';
+import { reviveAudioContext } from './audioContextRevival';
 
 export type VisMode = 'off' | 'pan' | 'pulse' | 'warp' | 'ripple' | 'tunnel' | 'fractal' | 'kaleidoscope' | 'droste' | 'vortex' | 'glitch' | 'crystal' | 'aurora' | 'plasma' | 'sphere' | 'beatcut';
 
@@ -26,11 +27,6 @@ export function getAnalyser(): AnalyserNode | null {
 
   if (!_ctx) {
     _ctx = new AudioContext();
-
-    // Resume context when tab becomes visible again (browsers suspend on hide)
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && _ctx?.state === 'suspended') _ctx.resume();
-    });
   }
 
   if (_ctx.state === 'suspended') {
@@ -39,6 +35,10 @@ export function getAnalyser(): AnalyserNode | null {
 
   if (!_connected) {
     const audio = getAudio();
+    // From here on the element's output only reaches the speakers through _ctx, so a
+    // suspended context is silence that looks exactly like healthy playback. Nothing
+    // ever disconnects this, so the watcher lives as long as the page.
+    reviveAudioContext(_ctx, audio);
     const source = _ctx.createMediaElementSource(audio);
     _gainNode = _ctx.createGain();
     _gainNode.gain.value = 1.0;
