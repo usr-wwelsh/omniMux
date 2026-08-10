@@ -2,8 +2,12 @@
   "name": "omniMux",
   "short_name": "omniMux",
   "description": "Self-hosted music streaming",
+  "id": "/",
   "start_url": "/",
   "display": "standalone",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
   "background_color": "#121212",
   "theme_color": "#121212",
   "icons": [
