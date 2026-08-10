@@ -8,18 +8,42 @@
 
   let { album }: Props = $props();
 
+  // Navidrome throttles concurrent artwork requests, so a cover can come back
+  // rejected purely because its neighbours asked at the same moment. One delayed
+  // retry recovers those; anything still failing falls back to the placeholder
+  // rather than the browser's broken-image icon.
+  const ART_ATTEMPTS = 2;
+  const ART_RETRY_MS = 400;
+
   let coverUrl = $state('');
+  let attempt = $state(0);
+  let artFailed = $state(false);
   let queuing = $state(false);
 
   // Assigning only in the `if` leaves the previous album's artwork on screen
   // whenever this instance is reused for a different album (unkeyed {#each}).
   $effect(() => {
+    attempt = 0;
+    artFailed = false;
     if (album.coverArt) {
       coverArtUrl(album.coverArt, 300).then((url) => (coverUrl = url));
     } else {
       coverUrl = '';
     }
   });
+
+  async function retryArt() {
+    const art = album.coverArt;
+    if (!art || attempt + 1 >= ART_ATTEMPTS) {
+      artFailed = true;
+      return;
+    }
+    attempt += 1;
+    await new Promise((resolve) => setTimeout(resolve, ART_RETRY_MS));
+    // A distinct URL is what forces the re-request — the browser would
+    // otherwise replay the cached failure.
+    coverUrl = `${await coverArtUrl(art, 300)}&retry=${attempt}`;
+  }
 
   async function addAlbumToQueue(e: MouseEvent) {
     e.preventDefault();
@@ -39,8 +63,15 @@
 
 <a href="/library/album/{album.id}" class="album-card">
   <div class="album-art-wrap">
-    {#if coverUrl}
-      <img src={coverUrl} alt={album.name} class="album-art" />
+    {#if coverUrl && !artFailed}
+      <img
+        src={coverUrl}
+        alt={album.name}
+        class="album-art"
+        loading="lazy"
+        decoding="async"
+        onerror={retryArt}
+      />
     {:else}
       <div class="album-art placeholder">
         <svg viewBox="0 0 24 24" width="48" height="48" fill="var(--text-subdued)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
