@@ -2,6 +2,10 @@ import { writable, get } from 'svelte/store';
 import { streamUrl, coverArtUrl, fetchItunesArtwork, subsonic, type Song } from '../subsonic';
 import { auth } from '../auth';
 import { api } from '../api';
+import {
+  backoffDelay, advancedPast, STALL_PROGRESS_SECONDS, HEALTHY_PLAYBACK_SECONDS,
+  RECOVERY_TIMEOUT_MS,
+} from '../playbackRecovery';
 
 export interface DJMeta {
   bpm: number;      // score contribution 0–3
@@ -94,6 +98,12 @@ export function warmUpCrossfadeAudio() {
 let _playIntent = false;
 let _recovering = false;
 let _recoverTimer: ReturnType<typeof setTimeout> | null = null;
+// Consecutive reloads that didn't produce sustained playback — drives the backoff so a
+// tab that stalls every second doesn't reload itself into one-second bursts of audio.
+let _recoverAttempts = 0;
+// Playback position when trouble was first noticed, used both to tell a stall that
+// resolved itself from one that didn't, and to judge whether a reload actually stuck.
+let _recoverFromPosition = 0;
 
 let _pushTimer: ReturnType<typeof setTimeout> | null = null;
 let _crossfadeSafetyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -342,9 +352,17 @@ export async function recoverPlayback() {
   const a = getAudio();
   // Already playing fine — nothing to recover.
   if (!a.paused && a.readyState >= 3) return;
+  // The element buffered through the stall on its own; reloading now would cut off
+  // playback that has already recovered.
+  if (!a.paused && advancedPast(_recoverFromPosition, a.currentTime, STALL_PROGRESS_SECONDS)) {
+    _recoverAttempts = 0;
+    return;
+  }
 
+  _recoverAttempts++;
   _recovering = true;
   const pos = get(currentTime);
+  _recoverFromPosition = pos;
   try {
     const fresh = await streamUrl(track.id);
     a.src = fresh;
@@ -357,14 +375,22 @@ export async function recoverPlayback() {
       _recovering = false;
     };
     a.addEventListener('loadedmetadata', resume, { once: true });
+    // loadedmetadata never fires on a stream that fails to load. Without this backstop
+    // the flag stays set and blocks every later recovery for the life of the page.
+    setTimeout(() => { _recovering = false; }, RECOVERY_TIMEOUT_MS);
     a.load();
   } catch {
     _recovering = false;
   }
 }
 
-function scheduleRecover(delay = 500) {
-  if (_recoverTimer) clearTimeout(_recoverTimer);
+// minDelay is a floor — repeated failures stretch the wait via the backoff. The first
+// scheduled attempt wins: later stall/error events must not keep pushing it out, and
+// _recoverFromPosition has to stay anchored to where playback actually got stuck.
+function scheduleRecover(minDelay = 500) {
+  if (_recoverTimer) return;
+  _recoverFromPosition = audio?.currentTime ?? 0;
+  const delay = Math.max(minDelay, backoffDelay(_recoverAttempts));
   _recoverTimer = setTimeout(() => { _recoverTimer = null; recoverPlayback(); }, delay);
 }
 
@@ -377,6 +403,13 @@ export function getAudio(): HTMLAudioElement {
     });
     audio.addEventListener('timeupdate', () => {
       currentTime.set(audio!.currentTime);
+      // Reset the backoff only once a reload has held for a while. A 'playing' event
+      // would reset it after the single second of audio that precedes the next stall,
+      // which is the loop the backoff exists to break.
+      if (_recoverAttempts > 0 &&
+          advancedPast(_recoverFromPosition, audio!.currentTime, HEALTHY_PLAYBACK_SECONDS)) {
+        _recoverAttempts = 0;
+      }
       if ('mediaSession' in navigator && audio!.duration) {
         navigator.mediaSession.setPositionState({
           duration: audio!.duration,
@@ -433,6 +466,10 @@ export function playTrack(track: Track) {
   const a = getAudio();
   const myId = get(localDeviceId);
   if (myId) activeDeviceId.set(myId);
+  // A new track is a clean slate: drop any recovery pending against the old stream.
+  if (_recoverTimer) { clearTimeout(_recoverTimer); _recoverTimer = null; }
+  _recoverAttempts = 0;
+  _recoverFromPosition = 0;
   currentTrack.set(track);
   updateMediaSession(track);
   if (track.streamUrl) {
