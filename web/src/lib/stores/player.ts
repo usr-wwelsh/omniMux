@@ -6,6 +6,7 @@ import {
   backoffDelay, advancedPast, STALL_PROGRESS_SECONDS, HEALTHY_PLAYBACK_SECONDS,
   RECOVERY_TIMEOUT_MS,
 } from '../playbackRecovery';
+import { loadSession, saveSession, resumePlan, type ResumePlan } from '../playbackSession';
 
 export interface DJMeta {
   bpm: number;      // score contribution 0–3
@@ -123,6 +124,31 @@ let _pushPending = false;
 // Suppress poll-driven queue overwrites while a batch fill is in progress
 export const suppressQueuePollApply = writable(false);
 
+// Relaunching the installed app from the homescreen navigates to start_url, which
+// reloads the page and wipes every store. The server still has the queue, but not
+// where in the track we were — that comes from the snapshot written while playing.
+const _lastSession = loadSession();
+// Cleared by the first server queue state we apply: only that first one is a
+// restore, everything after it is a live change from this or another device.
+let _coldStart = true;
+let _lastSessionSave = 0;
+const SESSION_SAVE_INTERVAL_MS = 2000;
+
+function persistSession(force = false) {
+  const track = get(currentTrack);
+  if (!track || !audio || !isThisDeviceActive()) return;
+  const now = Date.now();
+  if (!force && now - _lastSessionSave < SESSION_SAVE_INTERVAL_MS) return;
+  _lastSessionSave = now;
+  saveSession({
+    trackId: track.id,
+    index: get(queueIndex),
+    position: audio.currentTime,
+    playing: !audio.paused,
+    savedAt: now,
+  });
+}
+
 // Shared push logic — handles 409 version conflict with one refetch-and-retry
 async function _doPushQueue(activeId: string, retryOnConflict = true): Promise<void> {
   const myId = get(localDeviceId);
@@ -193,6 +219,28 @@ export function applyServerQueueState(
   if (queueVersion > _knownQueueVersion) _knownQueueVersion = queueVersion;
   const myId = get(localDeviceId);
   activeDeviceId.set(serverActiveDevice);
+
+  // First state after a page load. The queue below would otherwise read as "another
+  // device changed the track" and restart it from zero, which is what a homescreen
+  // relaunch used to look like. Put the track back where the session left it instead.
+  if (_coldStart) {
+    _coldStart = false;
+    if (index >= 0 && index < tracks.length) {
+      queue.set(tracks);
+      queueIndex.set(index);
+      const track = tracks[index];
+      if (serverActiveDevice === myId) {
+        restoreTrack(track, resumePlan(_lastSession, track.id, Date.now()));
+      } else {
+        currentTrack.set(track);
+        if (track.streamUrl) {
+          const a = getAudio();
+          if (a.src !== track.streamUrl) a.src = track.streamUrl;
+        }
+      }
+      return;
+    }
+  }
 
   if (serverActiveDevice === myId) {
     // We're active — apply remote track-list changes (e.g. another device added a song)
@@ -419,16 +467,25 @@ export function getAudio(): HTMLAudioElement {
       }
       _crossfadeChecker?.(audio!.currentTime, audio!.duration);
       maybeScrobble(audio!.currentTime, audio!.duration);
+      persistSession();
     });
     audio.addEventListener('durationchange', () => duration.set(audio!.duration || 0));
     audio.addEventListener('ended', () => { if (!_isCrossfading) playNext(); });
     audio.addEventListener('pause', () => {
       isPlaying.set(false);
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+      persistSession(true);
     });
     audio.addEventListener('play', () => {
       isPlaying.set(true);
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
+      persistSession(true);
+    });
+    // The last write before the app is backgrounded or killed: 'pagehide' is the only
+    // event Android reliably delivers, and timeupdate stops firing once we're hidden.
+    window.addEventListener('pagehide', () => persistSession(true));
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') persistSession(true);
     });
     setupMediaSession();
   }
@@ -464,6 +521,8 @@ export async function playSong(song: Song) {
 // Only call this when you intend to actually play audio here.
 export function playTrack(track: Track) {
   const a = getAudio();
+  // Anything the user starts here supersedes whatever the last session was doing.
+  _coldStart = false;
   const myId = get(localDeviceId);
   if (myId) activeDeviceId.set(myId);
   // A new track is a clean slate: drop any recovery pending against the old stream.
@@ -478,17 +537,50 @@ export function playTrack(track: Track) {
     a.volume = get(volume);
     a.play();
   }
-  // Fetch HQ art in the background — doesn't block playback.
-  // Token prevents a slow response from an earlier track clobbering the current one.
-  if (!track.hqCoverUrl) {
-    const token = ++_artworkFetchToken;
-    fetchItunesArtwork(track.artist, track.album).then((url) => {
-      if (!url || token !== _artworkFetchToken) return;
-      if (get(currentTrack)?.id === track.id) {
-        currentTrack.update((t) => t ? { ...t, hqCoverUrl: url } : t);
-      }
-    });
+  fetchHqArtwork(track);
+}
+
+// Fetch HQ art in the background — doesn't block playback.
+// Token prevents a slow response from an earlier track clobbering the current one.
+function fetchHqArtwork(track: Track) {
+  if (track.hqCoverUrl) return;
+  const token = ++_artworkFetchToken;
+  fetchItunesArtwork(track.artist, track.album).then((url) => {
+    if (!url || token !== _artworkFetchToken) return;
+    if (get(currentTrack)?.id === track.id) {
+      currentTrack.update((t) => t ? { ...t, hqCoverUrl: url } : t);
+    }
+  });
+}
+
+// Put a track back as it was before the page reloaded: same position, and playing
+// only if it was playing. Unlike playTrack this never claims the active device —
+// the server already says this device owns playback, that's why we're restoring.
+function restoreTrack(track: Track, plan: ResumePlan) {
+  const a = getAudio();
+  currentTrack.set(track);
+  updateMediaSession(track);
+  currentTime.set(plan.position);
+  if (track.streamUrl) {
+    a.src = track.streamUrl;
+    a.volume = get(volume);
+    if (plan.position > 0) {
+      // currentTime doesn't stick until the element knows how long the track is.
+      // The element is shared, so a seek that arrives after the track has moved on
+      // (slow metadata, a queue change from another device) has to be dropped.
+      a.addEventListener('loadedmetadata', () => {
+        if (get(currentTrack)?.id !== track.id) return;
+        try { a.currentTime = plan.position; } catch { /* unseekable stream */ }
+      }, { once: true });
+    }
+    if (plan.playing) {
+      _playIntent = true;
+      // Autoplay may be refused on a fresh page — the track still waits at the
+      // right position for the play button.
+      a.play().catch(() => { _playIntent = false; });
+    }
   }
+  fetchHqArtwork(track);
 }
 
 export async function playQueue(songs: Song[], startIndex = 0) {
