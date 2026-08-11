@@ -535,7 +535,15 @@ export function playTrack(track: Track) {
     _playIntent = true;
     a.src = track.streamUrl;
     a.volume = get(volume);
-    a.play();
+    // A backgrounded tab can reject this (throttled fetch/decode for the new
+    // track) with no 'error' event to follow it up — without this catch,
+    // scheduleRecover never runs and playback dies silently at the boundary.
+    // AbortError means a newer load superseded this one before it resolved
+    // (e.g. the queue poll racing a local track change) — routine, and that
+    // newer load owns recovery if it needs it. Don't treat it as a stall.
+    a.play().catch((err) => {
+      if (_playIntent && err?.name !== 'AbortError') scheduleRecover();
+    });
   }
   fetchHqArtwork(track);
 }
