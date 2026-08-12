@@ -1,0 +1,26 @@
+[Unit]
+Description=omniMux host updater (opt-in auto-update helper)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Must be a user in the `docker` group (so `docker compose` works without
+# sudo) who owns the omniMux checkout.
+User=CHANGE_ME
+WorkingDirectory=/opt/omnimux
+EnvironmentFile=/etc/omnimux/updater.env
+ExecStart=/usr/bin/python3 /opt/omnimux/deploy/omnimux_updater.py
+
+# The socket directory the api container mounts. Owned by %t (User=) with the
+# socket file itself chmod 666 by the daemon — see deploy/README.md for why.
+RuntimeDirectory=omnimux-updater
+RuntimeDirectoryMode=0755
+
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

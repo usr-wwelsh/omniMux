@@ -10,6 +10,7 @@
   import MiniPlayer from '../components/MiniPlayer.svelte';
   import NowPlaying from '../components/NowPlaying.svelte';
   import GuestBanner from '../components/GuestBanner.svelte';
+  import UpdateBanner from '../components/UpdateBanner.svelte';
   import { startDeviceSync, stopDeviceSync } from '$lib/stores/devices';
   import { initSettingsSync, resetSettingsSync } from '$lib/stores/settingsSync';
   import { showFullscreenPlayer } from '$lib/stores/ui';
@@ -147,6 +148,8 @@
       <div class="content-scroll" bind:this={scroller}>
         {#if $isGuest}
           <GuestBanner />
+        {:else}
+          <UpdateBanner />
         {/if}
         {@render children()}
       </div>

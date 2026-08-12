@@ -1,5 +1,6 @@
 import { get } from 'svelte/store';
 import { auth, logout } from './auth';
+import type { UpdateStatus, UpdateProgress, ApplyUpdateResult } from './updateBanner';
 
 const API_BASE = '';
 
@@ -496,5 +497,25 @@ export const api = {
     return request(
       `/api/context/album?artist=${encodeURIComponent(artist)}&album=${encodeURIComponent(album)}`,
     );
+  },
+
+  async getUpdateStatus(): Promise<UpdateStatus> {
+    return request('/api/update/status');
+  },
+
+  async getUpdateProgress(): Promise<UpdateProgress> {
+    return request('/api/update/progress');
+  },
+
+  // Bypasses the shared request() helper: a rejected update (already in
+  // progress, updater unreachable) is a normal 409/503 with a JSON body to
+  // show the user, not an exception to throw.
+  async applyUpdate(): Promise<ApplyUpdateResult> {
+    const { token } = get(auth);
+    const res = await fetch('/api/update/apply', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    return res.json();
   },
 };

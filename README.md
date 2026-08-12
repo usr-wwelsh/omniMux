@@ -142,6 +142,8 @@ All configuration is via environment variables in `docker-compose.yml`:
 | `DATA_DIR` | `/data` | Where the SQLite database is stored |
 | `JWT_SECRET` | `change-me-in-production` | Secret used to sign auth tokens — **change this** |
 
+**Auto-update (opt-in):** the web UI can show a changelog banner with a one-click update button. Off by default — see [`deploy/README.md`](deploy/README.md) to enable it.
+
 </details>
 
 ## FAQ
