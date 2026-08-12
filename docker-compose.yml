@@ -23,10 +23,6 @@ services:
     volumes:
       - ./data/music:/music
       - ./data/omnimux:/data
-      # Opt-in auto-update banner — see deploy/README.md. Uncomment once
-      # omnimux-updater.service is installed on the host; leave commented
-      # out and the update banner simply never appears.
-      # - /run/omnimux-updater:/run/omnimux-updater:ro
     environment:
       NAVIDROME_URL: http://navidrome:4533
       MUSIC_DIR: /music
@@ -34,8 +30,10 @@ services:
       JWT_SECRET: change-me-in-production
       MALLOC_ARENA_MAX: 2
       MALLOC_TRIM_THRESHOLD_: 131072
-      # Must match OMNIMUX_UPDATER_TOKEN in /etc/omnimux/updater.env — see deploy/README.md.
-      # UPDATER_TOKEN: change-me-in-production
+    # Opt-in auto-update banner (off by default, nothing above changes): run
+    # deploy/install.sh, which drops a docker-compose.override.yml next to
+    # this file — Compose merges it automatically, no editing needed here.
+    # See deploy/README.md.
     depends_on:
       - navidrome
     restart: unless-stopped

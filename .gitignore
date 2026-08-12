@@ -1,6 +1,9 @@
 # Data — never commit music files or the database
 data/
 
+# Opt-in auto-update: holds a shared secret once installed
+docker-compose.override.yml
+
 # Python
 __pycache__/
 *.py[cod]

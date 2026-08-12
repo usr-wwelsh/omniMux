@@ -2,8 +2,15 @@
 
 omniMux's web UI can show an "update available" banner with a one-line
 changelog, and a button that pulls + rebuilds on your host. This is **off by
-default** — without the pieces below installed, the banner never appears and
-nothing about your deployment changes.
+default**, in two independent ways:
+
+- **Host capability** — nothing below is installed until you run it. Without
+  it, the api container can't reach an updater and the banner never appears,
+  no matter what.
+- **In-app switch** — once installed, whether the banner actually shows is a
+  toggle in Settings → Updates (off by default there too), so it's a
+  deliberate choice on both sides, not just infrastructure that happens to
+  exist.
 
 ## Why a separate host service
 
@@ -19,37 +26,36 @@ container.
 
 ## Install
 
-1. Copy the unit and env file:
+```bash
+sudo ./deploy/install.sh
+docker compose up -d
+```
 
-   ```bash
-   sudo cp deploy/omnimux-updater.service /etc/systemd/system/
-   sudo mkdir -p /etc/omnimux
-   sudo cp deploy/updater.env.example /etc/omnimux/updater.env
-   sudo chmod 600 /etc/omnimux/updater.env
-   ```
+That generates a token, writes `/etc/omnimux/updater.env` and
+`/etc/systemd/system/omnimux-updater.service`, drops a
+`docker-compose.override.yml` next to `docker-compose.yml` with the token and
+socket mount filled in (Compose merges override files automatically — the
+tracked `docker-compose.yml` is never touched), and starts the service.
+`docker-compose.override.yml` is gitignored since it holds the token.
 
-2. Edit `/etc/omnimux/updater.env`:
-   - `OMNIMUX_REPO_DIR` — absolute path to your omniMux checkout.
-   - `OMNIMUX_UPDATER_TOKEN` — generate with `openssl rand -hex 32`.
+Then flip **Settings → Updates → Show update banner** on in the web UI — the
+install script only grants the *capability*; the banner itself stays off
+until that switch is on.
 
-3. Edit `/etc/systemd/system/omnimux-updater.service`:
-   - `User=` — a user that owns the checkout and is in the `docker` group.
-   - `WorkingDirectory=` / the path in `ExecStart=` — match your checkout location.
+Re-running `install.sh` is safe — it reuses the existing token and env file
+instead of generating a new one.
 
-4. In `docker-compose.yml`, set `UPDATER_TOKEN` on `omnimux-api` to the same
-   value as `OMNIMUX_UPDATER_TOKEN` above, and confirm the socket volume mount
-   is uncommented (see the comment in `docker-compose.yml`).
+### Manual install
 
-5. Enable and start:
-
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now omnimux-updater
-   sudo systemctl status omnimux-updater
-   ```
-
-6. `docker compose up -d` to pick up the new mount. The update banner will
-   appear in the web UI once a new commit lands on your tracked branch.
+If you'd rather not run a script as root, do the same four things by hand:
+copy `deploy/omnimux-updater.service` to `/etc/systemd/system/`, copy
+`deploy/updater.env.example` to `/etc/omnimux/updater.env` (mode 600) and fill
+in `OMNIMUX_REPO_DIR` / a token from `openssl rand -hex 32`, edit `User=` /
+`WorkingDirectory=` / `ExecStart=` in the unit file to match your checkout,
+then copy `deploy/docker-compose.override.yml.example` to
+`docker-compose.override.yml` in the repo root with the same token. Finish
+with `sudo systemctl daemon-reload && sudo systemctl enable --now
+omnimux-updater`.
 
 ## Updating the updater itself
 
@@ -64,7 +70,8 @@ pulling picks up the change.
 sudo systemctl disable --now omnimux-updater
 sudo rm /etc/systemd/system/omnimux-updater.service /etc/omnimux/updater.env
 sudo systemctl daemon-reload
+rm docker-compose.override.yml
 ```
 
-Then remove the socket volume from `docker-compose.yml` and re-run `docker
-compose up -d`. The web UI falls back to hiding the update banner entirely.
+Then re-run `docker compose up -d`. The web UI falls back to hiding the
+update banner entirely, whatever the Settings toggle says.

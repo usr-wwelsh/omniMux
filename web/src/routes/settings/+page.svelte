@@ -9,6 +9,7 @@
   } from '$lib/stores/autodj';
   import { isGuest } from '$lib/auth';
   import { api, type KnownDevice } from '$lib/api';
+  import { autoUpdateEnabled } from '$lib/stores/updates';
 
   const themes: { value: Theme; label: string; description: string }[] = [
     { value: 'spotify', label: 'Spotify', description: 'Dark green — the default look' },
@@ -42,6 +43,10 @@
   let guestToggling = $state(false);
   let guestError = $state('');
 
+  // null while checking; true/false once we know whether deploy/omnimux_updater.py
+  // is actually reachable on the host, independent of the in-app toggle above.
+  let updaterDetected = $state<boolean | null>(null);
+
   let knownDevices = $state<KnownDevice[]>([]);
   let thisDeviceId = $state('');
 
@@ -57,6 +62,12 @@
     if (!$isGuest) {
       const status = await api.guestStatus();
       guestEnabled = status.enabled;
+      try {
+        const updateStatus = await api.getUpdateStatus();
+        updaterDetected = updateStatus.available;
+      } catch {
+        updaterDetected = false;
+      }
     }
     thisDeviceId = localStorage.getItem('omnimux-device-id') || '';
     loadDevices();
@@ -291,6 +302,32 @@
     {#if guestError}
       <p class="guest-error">{guestError}</p>
     {/if}
+  </section>
+  {/if}
+
+  {#if !$isGuest}
+  <section class="settings-section">
+    <h2 class="section-title">Updates</h2>
+
+    <div class="setting-row">
+      <div class="setting-info">
+        <span class="setting-name">Show update banner</span>
+        <span class="setting-desc">
+          {#if updaterDetected === null}
+            Checking for the host update helper…
+          {:else if updaterDetected}
+            Host update helper detected — shows a changelog and a one-click update button when a new commit lands.
+          {:else}
+            Host update helper not detected — see <code>deploy/README.md</code> on the server to enable this.
+          {/if}
+        </span>
+      </div>
+      <button
+        class="toggle-btn"
+        class:active={$autoUpdateEnabled}
+        onclick={() => autoUpdateEnabled.update((v) => !v)}
+      >{$autoUpdateEnabled ? 'On' : 'Off'}</button>
+    </div>
   </section>
   {/if}
 
