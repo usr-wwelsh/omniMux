@@ -114,11 +114,13 @@ git clone https://github.com/usr-wwelsh/omnimux.git
 cd omniMux
 ```
 
-Copy `.env.example` to `.env` and set a real value for `JWT_SECRET`, then:
+Copy `.env.example` to `.env` and set a real value for `JWT_SECRET`:
 
 ```bash
 cp .env.example .env
-docker compose up -d
+openssl rand -hex 32   # copy the output into JWT_SECRET below
+nano .env
+docker compose up -d --build
 ```
 
 | Service | URL |
