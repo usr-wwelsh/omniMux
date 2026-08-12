@@ -144,8 +144,9 @@ so a `git pull` never conflicts with values you've set locally:
 | `MUSIC_DIR` | `docker-compose.yml` | `/music` | Where downloaded audio files are stored |
 | `DATA_DIR` | `docker-compose.yml` | `/data` | Where the SQLite database is stored |
 | `JWT_SECRET` | `.env` | `change-me-in-production` | Secret used to sign auth tokens — **change this** |
+| `UPDATER_TOKEN` | `.env` | *(blank)* | Auth for the opt-in auto-update helper — see [`deploy/README.md`](deploy/README.md) |
 
-**Auto-update (opt-in):** the web UI can show a changelog banner with a one-click update button. Off by default — see [`deploy/README.md`](deploy/README.md) to enable it.
+**Auto-update (opt-in):** the web UI can show a changelog banner with a one-click update button. Not installed by default — see [`deploy/README.md`](deploy/README.md) to enable it.
 
 </details>
 
