@@ -325,6 +325,7 @@
       <button
         class="toggle-btn"
         class:active={$autoUpdateEnabled}
+        disabled={!$autoUpdateEnabled && updaterDetected !== true}
         onclick={() => autoUpdateEnabled.update((v) => !v)}
       >{$autoUpdateEnabled ? 'On' : 'Off'}</button>
     </div>
