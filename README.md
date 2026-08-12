@@ -129,9 +129,18 @@ docker compose up -d
 
 On first run, open Navidrome at `:4533`, create an admin account, then log into the omniMux web app with those same credentials.
 
+**Optional — auto-update:** the web UI can show a changelog banner with a one-click update button once you opt in:
+
+```bash
+sudo ./deploy/install.sh
+docker compose up -d
+```
+
+See [`deploy/README.md`](deploy/README.md) for what that installs and why.
+
 </div>
 
-<details>
+<details id="configuration">
 <summary><strong>Configuration</strong></summary>
 
 Most configuration is fixed in `docker-compose.yml`. Secrets are the
@@ -144,9 +153,7 @@ so a `git pull` never conflicts with values you've set locally:
 | `MUSIC_DIR` | `docker-compose.yml` | `/music` | Where downloaded audio files are stored |
 | `DATA_DIR` | `docker-compose.yml` | `/data` | Where the SQLite database is stored |
 | `JWT_SECRET` | `.env` | `change-me-in-production` | Secret used to sign auth tokens — **change this** |
-| `UPDATER_TOKEN` | `.env` | *(blank)* | Auth for the opt-in auto-update helper — see [`deploy/README.md`](deploy/README.md) |
-
-**Auto-update (opt-in):** the web UI can show a changelog banner with a one-click update button. Not installed by default — see [`deploy/README.md`](deploy/README.md) to enable it.
+| `UPDATER_TOKEN` | `.env` | *(blank)* | Auth for the opt-in auto-update helper (see Quick start above) — set for you by `deploy/install.sh` |
 
 </details>
 
@@ -167,7 +174,7 @@ Yes, via the PWA. Safari → Share → Add to Home Screen. Requires HTTPS, so ex
 **Why not just use Spotify?**
 Because you don't own anything on Spotify. The day they drop a track, raise prices, or go under, your library is gone. omniMux tracks live as files on your disk.
 
-<details>
+<details id="project-structure">
 <summary><strong>Project structure</strong></summary>
 
 ```
