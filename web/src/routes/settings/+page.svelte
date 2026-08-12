@@ -9,7 +9,6 @@
   } from '$lib/stores/autodj';
   import { isGuest } from '$lib/auth';
   import { api, type KnownDevice } from '$lib/api';
-  import { autoUpdateEnabled } from '$lib/stores/updates';
 
   const themes: { value: Theme; label: string; description: string }[] = [
     { value: 'spotify', label: 'Spotify', description: 'Dark green — the default look' },
@@ -44,7 +43,8 @@
   let guestError = $state('');
 
   // null while checking; true/false once we know whether deploy/omnimux_updater.py
-  // is actually reachable on the host, independent of the in-app toggle above.
+  // is actually reachable on the host. Installing it (deploy/install.sh) is
+  // itself the opt-in — there's no separate switch to flip afterward.
   let updaterDetected = $state<boolean | null>(null);
 
   let knownDevices = $state<KnownDevice[]>([]);
@@ -311,23 +311,20 @@
 
     <div class="setting-row">
       <div class="setting-info">
-        <span class="setting-name">Show update banner</span>
-        <span class="setting-desc">
-          {#if updaterDetected === null}
-            Checking for the host update helper…
-          {:else if updaterDetected}
-            Host update helper detected — shows a changelog and a one-click update button when a new commit lands.
-          {:else}
-            Host update helper not detected — see <code>deploy/README.md</code> on the server to enable this.
-          {/if}
-        </span>
+        <span class="setting-name">Auto-update</span>
+        {#if updaterDetected === null}
+          <span class="setting-desc">Checking for the host update helper…</span>
+        {:else if updaterDetected}
+          <span class="setting-desc">
+            Installed — a banner with the changelog and an update button appears here whenever a new commit lands.
+          </span>
+        {:else}
+          <span class="setting-desc">
+            Not installed. On the server, run:
+          </span>
+          <code class="install-cmd">sudo ./deploy/install.sh && docker compose up -d</code>
+        {/if}
       </div>
-      <button
-        class="toggle-btn"
-        class:active={$autoUpdateEnabled}
-        disabled={!$autoUpdateEnabled && updaterDetected !== true}
-        onclick={() => autoUpdateEnabled.update((v) => !v)}
-      >{$autoUpdateEnabled ? 'On' : 'Off'}</button>
     </div>
   </section>
   {/if}
@@ -560,6 +557,19 @@
 
   .dimmed {
     opacity: 0.45;
+  }
+
+  .install-cmd {
+    display: block;
+    margin-top: 6px;
+    padding: 8px 12px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-primary);
+    user-select: all;
+    width: fit-content;
   }
 
   .segment-group {

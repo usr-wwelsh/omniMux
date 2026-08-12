@@ -1,16 +1,9 @@
 # Auto-update (opt-in)
 
 omniMux's web UI can show an "update available" banner with a one-line
-changelog, and a button that pulls + rebuilds on your host. This is **off by
-default**, in two independent ways:
-
-- **Host capability** — nothing below is installed until you run it. Without
-  it, the api container can't reach an updater and the banner never appears,
-  no matter what.
-- **In-app switch** — once installed, whether the banner actually shows is a
-  toggle in Settings → Updates (off by default there too), so it's a
-  deliberate choice on both sides, not just infrastructure that happens to
-  exist.
+changelog, and a button that pulls + rebuilds on your host. Running the
+install step below is itself the opt-in — there's no second switch to flip
+afterward. Skip it and nothing about your deployment changes.
 
 ## Why a separate host service
 
@@ -32,30 +25,36 @@ docker compose up -d
 ```
 
 That generates a token, writes `/etc/omnimux/updater.env` and
-`/etc/systemd/system/omnimux-updater.service`, drops a
-`docker-compose.override.yml` next to `docker-compose.yml` with the token and
-socket mount filled in (Compose merges override files automatically — the
-tracked `docker-compose.yml` is never touched), and starts the service.
-`docker-compose.override.yml` is gitignored since it holds the token.
+`/etc/systemd/system/omnimux-updater.service`, sets `UPDATER_TOKEN` in the
+repo's `.env` (creating it from `.env.example` first if you don't have one
+yet — everything else already in `.env`, like `JWT_SECRET`, is left alone),
+and starts the service. `docker-compose.yml` itself is never edited, by the
+script or by you — see below.
 
-Then flip **Settings → Updates → Show update banner** on in the web UI — the
-install script only grants the *capability*; the banner itself stays off
-until that switch is on.
-
-Re-running `install.sh` is safe — it reuses the existing token and env file
-instead of generating a new one.
+Re-running `install.sh` is safe — it reuses the existing token instead of
+generating a new one.
 
 ### Manual install
 
-If you'd rather not run a script as root, do the same four things by hand:
-copy `deploy/omnimux-updater.service` to `/etc/systemd/system/`, copy
-`deploy/updater.env.example` to `/etc/omnimux/updater.env` (mode 600) and fill
-in `OMNIMUX_REPO_DIR` / a token from `openssl rand -hex 32`, edit `User=` /
-`WorkingDirectory=` / `ExecStart=` in the unit file to match your checkout,
-then copy `deploy/docker-compose.override.yml.example` to
-`docker-compose.override.yml` in the repo root with the same token. Finish
-with `sudo systemctl daemon-reload && sudo systemctl enable --now
-omnimux-updater`.
+If you'd rather not run a script as root, do the same things by hand: copy
+`deploy/omnimux-updater.service` to `/etc/systemd/system/`, copy
+`deploy/updater.env.example` to `/etc/omnimux/updater.env` (mode 600) and
+fill in `OMNIMUX_REPO_DIR` / a token from `openssl rand -hex 32`, edit
+`User=` / `WorkingDirectory=` / `ExecStart=` in the unit file to match your
+checkout, then set that same token as `UPDATER_TOKEN` in the repo's `.env`
+(copy `.env.example` first if you don't have one). Finish with `sudo
+systemctl daemon-reload && sudo systemctl enable --now omnimux-updater`.
+
+## Why `.env` instead of editing `docker-compose.yml`
+
+`JWT_SECRET` and `UPDATER_TOKEN` are read from `.env` (gitignored, Compose
+loads it automatically) rather than hardcoded in `docker-compose.yml`. If you
+edit secrets directly into the tracked file instead, a future `git pull` —
+including one the updater runs for you — has to reconcile your local changes
+to that file with upstream's, which is exactly the kind of thing that turns
+"click update" into a merge conflict. Keeping the tracked file identical to
+upstream and putting everything host-specific in `.env` means `git pull`
+never has anything of yours to conflict with.
 
 ## Updating the updater itself
 
@@ -70,8 +69,7 @@ pulling picks up the change.
 sudo systemctl disable --now omnimux-updater
 sudo rm /etc/systemd/system/omnimux-updater.service /etc/omnimux/updater.env
 sudo systemctl daemon-reload
-rm docker-compose.override.yml
 ```
 
-Then re-run `docker compose up -d`. The web UI falls back to hiding the
-update banner entirely, whatever the Settings toggle says.
+Optionally clear `UPDATER_TOKEN=` back out of `.env`. Either way the web UI
+falls back to hiding the update banner entirely once the socket is gone.

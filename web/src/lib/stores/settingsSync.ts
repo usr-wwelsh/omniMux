@@ -3,7 +3,6 @@ import { api } from '../api';
 import { crossfadeDuration, beatmatchEnabled, bpmTolerance, visCycleInterval, ambientIdleMinutes, djPersonality, visCyclingPaused } from './autodj';
 import { visMode } from './visualizer';
 import { theme } from './theme';
-import { autoUpdateEnabled } from './updates';
 
 let _loading = false;
 let _pushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -23,7 +22,6 @@ function schedulePush() {
       'omnimux-vis-cycling-paused': String(get(visCyclingPaused)),
       'omnimux-dj-personality': String(get(djPersonality)),
       'theme': String(get(theme)),
-      'omnimux-autoupdate': String(get(autoUpdateEnabled)),
     };
     try {
       await api.putSettings(data);
@@ -45,7 +43,6 @@ export async function initSettingsSync() {
   visCyclingPaused.subscribe(() => schedulePush());
   djPersonality.subscribe(() => schedulePush());
   theme.subscribe(() => schedulePush());
-  autoUpdateEnabled.subscribe(() => schedulePush());
 
   // Load server settings and apply them (server wins over localStorage)
   _loading = true;
@@ -60,7 +57,6 @@ export async function initSettingsSync() {
     if ('omnimux-vis-cycling-paused' in data) visCyclingPaused.set(data['omnimux-vis-cycling-paused'] === 'true');
     if ('omnimux-dj-personality' in data) djPersonality.set(data['omnimux-dj-personality'] as Parameters<typeof djPersonality.set>[0]);
     if ('theme' in data) theme.set(data['theme'] as Parameters<typeof theme.set>[0]);
-    if ('omnimux-autoupdate' in data) autoUpdateEnabled.set(data['omnimux-autoupdate'] === 'true');
   } catch {}
   _loading = false;
 }

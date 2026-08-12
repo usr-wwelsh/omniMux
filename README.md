@@ -114,9 +114,10 @@ git clone https://github.com/usr-wwelsh/omnimux.git
 cd omniMux
 ```
 
-Edit `docker-compose.yml` and set a real value for `JWT_SECRET`, then:
+Copy `.env.example` to `.env` and set a real value for `JWT_SECRET`, then:
 
 ```bash
+cp .env.example .env
 docker compose up -d
 ```
 
@@ -133,14 +134,16 @@ On first run, open Navidrome at `:4533`, create an admin account, then log into 
 <details>
 <summary><strong>Configuration</strong></summary>
 
-All configuration is via environment variables in `docker-compose.yml`:
+Most configuration is fixed in `docker-compose.yml`. Secrets are the
+exception — they're read from `.env` (copy from `.env.example`, gitignored)
+so a `git pull` never conflicts with values you've set locally:
 
-| Variable | Default | Description |
-|---|---|---|
-| `NAVIDROME_URL` | `http://navidrome:4533` | Internal URL of the Navidrome service |
-| `MUSIC_DIR` | `/music` | Where downloaded audio files are stored |
-| `DATA_DIR` | `/data` | Where the SQLite database is stored |
-| `JWT_SECRET` | `change-me-in-production` | Secret used to sign auth tokens — **change this** |
+| Variable | Where | Default | Description |
+|---|---|---|---|
+| `NAVIDROME_URL` | `docker-compose.yml` | `http://navidrome:4533` | Internal URL of the Navidrome service |
+| `MUSIC_DIR` | `docker-compose.yml` | `/music` | Where downloaded audio files are stored |
+| `DATA_DIR` | `docker-compose.yml` | `/data` | Where the SQLite database is stored |
+| `JWT_SECRET` | `.env` | `change-me-in-production` | Secret used to sign auth tokens — **change this** |
 
 **Auto-update (opt-in):** the web UI can show a changelog banner with a one-click update button. Off by default — see [`deploy/README.md`](deploy/README.md) to enable it.
 

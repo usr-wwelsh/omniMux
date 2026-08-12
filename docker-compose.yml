@@ -23,17 +23,22 @@ services:
     volumes:
       - ./data/music:/music
       - ./data/omnimux:/data
+      # Opt-in auto-update helper's socket (see deploy/README.md). A no-op
+      # until deploy/install.sh has run: Docker just creates an empty
+      # directory here, and the api container notices there's no socket in
+      # it and stays quiet.
+      - /run/omnimux-updater:/run/omnimux-updater:ro
     environment:
       NAVIDROME_URL: http://navidrome:4533
       MUSIC_DIR: /music
       DATA_DIR: /data
-      JWT_SECRET: change-me-in-production
+      # Both read from .env (gitignored, copy from .env.example) — never
+      # edit the values in this tracked file directly, or a future `git
+      # pull` will conflict with your own secrets.
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      UPDATER_TOKEN: ${UPDATER_TOKEN:-}
       MALLOC_ARENA_MAX: 2
       MALLOC_TRIM_THRESHOLD_: 131072
-    # Opt-in auto-update banner (off by default, nothing above changes): run
-    # deploy/install.sh, which drops a docker-compose.override.yml next to
-    # this file — Compose merges it automatically, no editing needed here.
-    # See deploy/README.md.
     depends_on:
       - navidrome
     restart: unless-stopped

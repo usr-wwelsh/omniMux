@@ -1,7 +1,6 @@
 <script lang="ts">
   import { api } from '$lib/api';
   import { pendingCommits, phaseLabel, type UpdateCommit } from '$lib/updateBanner';
-  import { autoUpdateEnabled } from '$lib/stores/updates';
 
   const CHECK_INTERVAL_MS = 5 * 60 * 1000;
   const PROGRESS_POLL_MS = 1000;
@@ -26,10 +25,6 @@
   }
 
   $effect(() => {
-    if (!$autoUpdateEnabled) {
-      commits = [];
-      return;
-    }
     checkStatus();
     const timer = setInterval(checkStatus, CHECK_INTERVAL_MS);
     return () => clearInterval(timer);
