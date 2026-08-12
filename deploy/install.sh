@@ -7,7 +7,7 @@
 set -euo pipefail
 
 if [[ $EUID -ne 0 ]]; then
-  echo "Run with sudo: sudo ./deploy/install.sh" >&2
+  echo "Needs root: sudo ./deploy/install.sh (or run this as root directly)" >&2
   exit 1
 fi
 
@@ -23,9 +23,11 @@ if [[ ! -f "$REPO_DIR/docker-compose.yml" ]]; then
   exit 1
 fi
 
-if ! id -nG "$RUN_AS_USER" | grep -qw docker; then
+# root always has docker socket access regardless of group membership —
+# this only matters for a non-root RUN_AS_USER.
+if [[ "$(id -u "$RUN_AS_USER")" -ne 0 ]] && ! id -nG "$RUN_AS_USER" | grep -qw docker; then
   echo "Warning: $RUN_AS_USER is not in the 'docker' group — docker compose up will fail when the updater runs." >&2
-  echo "Fix with: sudo usermod -aG docker $RUN_AS_USER (then log back in)" >&2
+  echo "Fix with: usermod -aG docker $RUN_AS_USER (then log back in)" >&2
 fi
 
 # Sets KEY=VALUE in FILE, replacing an existing line for KEY if present and
