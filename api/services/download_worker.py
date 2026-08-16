@@ -101,12 +101,27 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
         "quiet": True,
         "no_warnings": True,
         "progress_hooks": [progress_hook],
+        "retries": 10,
+        "fragment_retries": 10,
     }
 
-    try:
-        info = await asyncio.to_thread(_yt_download, youtube_url, ydl_opts)
-    except Exception as e:
-        await _update_download(download_id, status="failed", error=str(e))
+    # The 403 happens on connecting to the media URL itself, before any bytes
+    # flow, so yt-dlp's own retries/fragment_retries never see it. Each fresh
+    # attempt gets a new URL and PO token, which is what actually clears it
+    # (yt-dlp/yt-dlp#17395: intermittent, usually resolves within a few
+    # retries).
+    info = None
+    last_error: Exception | None = None
+    for attempt in range(5):
+        try:
+            info = await asyncio.to_thread(_yt_download, youtube_url, ydl_opts)
+            break
+        except Exception as e:
+            last_error = e
+            if attempt < 4:
+                await asyncio.sleep(3 * (attempt + 1))
+    if info is None:
+        await _update_download(download_id, status="failed", error=str(last_error))
         return
 
     # Find the output file
