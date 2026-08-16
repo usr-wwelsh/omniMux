@@ -1,3 +1,5 @@
+[![Read about the commits](https://img.shields.io/badge/commits-code%20blog-1a1a1a?style=flat-square)](https://wwel.sh/digest.html?repo=omniMux)
+
 <div align="center"><img src="banner.svg" width="860" alt="omniMux banner" /></div>
 
 # omniMux
