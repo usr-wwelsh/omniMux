@@ -103,6 +103,8 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
         "progress_hooks": [progress_hook],
         "retries": 10,
         "fragment_retries": 10,
+        "js_runtimes": {"quickjs": {}},
+        "extractor_args": {"youtube": {"player_client": ["web", "mweb", "web_safari"]}},
     }
 
     # The 403 happens on connecting to the media URL itself, before any bytes
