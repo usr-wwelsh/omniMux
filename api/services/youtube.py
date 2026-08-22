@@ -7,6 +7,29 @@ from ytmusicapi import YTMusic
 
 _ytm = YTMusic()
 
+# Only these hosts may ever reach yt-dlp; anything else is treated as SSRF.
+_YOUTUBE_HOSTS = {
+    "youtube.com",
+    "www.youtube.com",
+    "m.youtube.com",
+    "music.youtube.com",
+    "youtu.be",
+}
+
+
+def validate_youtube_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url.strip())
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"unsupported scheme: {parsed.scheme!r}")
+    if parsed.username or parsed.password:
+        raise ValueError("userinfo not allowed")
+    host = (parsed.hostname or "").lower()
+    if host not in _YOUTUBE_HOSTS:
+        raise ValueError(f"host not allowed: {host!r}")
+    if parsed.port not in (None, 80, 443):
+        raise ValueError(f"port not allowed: {parsed.port}")
+    return url
+
 
 @dataclass
 class SearchResult:

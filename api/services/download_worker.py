@@ -12,6 +12,7 @@ from services import albums
 from services.discovery import fingerprint_lookup, lookup_genre
 from services.metadata import tag_file
 from services.navidrome import trigger_scan, search_song, get_or_create_playlist, add_song_to_playlist
+from services.youtube import validate_youtube_url
 
 MUSIC_DIR = os.environ.get("MUSIC_DIR", "./music")
 MAX_CONCURRENT = 3
@@ -67,6 +68,11 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
         if not dl:
             return
         youtube_url = dl.youtube_url
+        try:
+            validate_youtube_url(youtube_url)
+        except ValueError as e:
+            await _update_download(download_id, status="failed", error=str(e))
+            return
         title = dl.title
         artist = dl.artist
         youtube_id = dl.youtube_id

@@ -1,4 +1,5 @@
 import asyncio
+import re
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -8,9 +9,18 @@ from db.database import get_db
 from db.models import Download, TrackMapping
 from routers.auth import get_current_user, require_non_guest, UserContext
 from services.download_worker import process_download
-from services.youtube import search_youtube
+from services.youtube import search_youtube, validate_youtube_url
 
 router = APIRouter()
+
+_YOUTUBE_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+
+def _require_youtube_url(url: str) -> str:
+    try:
+        return validate_youtube_url(url)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Only YouTube URLs are supported")
 
 # Keep references to prevent GC-cancellation of in-flight download tasks
 _download_tasks: set[asyncio.Task] = set()
@@ -107,6 +117,10 @@ async def start_download(
     user: UserContext = Depends(require_non_guest),
     db=Depends(get_db),
 ):
+    youtube_url = _require_youtube_url(body.youtube_url)
+    if not _YOUTUBE_ID.fullmatch(body.youtube_id):
+        raise HTTPException(status_code=400, detail="Invalid video id")
+
     # Check if already cached
     existing = await db.execute(
         select(TrackMapping).where(TrackMapping.youtube_id == body.youtube_id)
@@ -127,7 +141,7 @@ async def start_download(
 
     dl = Download(
         youtube_id=body.youtube_id,
-        youtube_url=body.youtube_url,
+        youtube_url=youtube_url,
         title=body.title,
         artist=body.artist,
         status="queued",
@@ -228,6 +242,7 @@ async def import_playlist(
     user: UserContext = Depends(require_non_guest),
     db=Depends(get_db),
 ):
+    _require_youtube_url(body.playlist_url)
     entries = await asyncio.to_thread(_extract_playlist, body.playlist_url)
     download_ids = []
 
@@ -279,6 +294,7 @@ async def import_video(
     user: UserContext = Depends(require_non_guest),
     db=Depends(get_db),
 ):
+    _require_youtube_url(body.video_url)
     entry = await asyncio.to_thread(_extract_video, body.video_url)
     if not entry:
         raise HTTPException(status_code=400, detail="Could not resolve video")
@@ -336,6 +352,9 @@ async def import_channel(
     user: UserContext = Depends(require_non_guest),
     db=Depends(get_db),
 ):
+    for item in body.playlists:
+        _require_youtube_url(item.url)
+
     async def _run(playlists: list[ChannelImportItem]) -> None:
         from db.database import async_session
 
@@ -397,6 +416,7 @@ async def get_channel_playlists(
     url: str,
     user: UserContext = Depends(require_non_guest),
 ):
+    _require_youtube_url(url)
     playlists = await asyncio.to_thread(_extract_channel_playlists, url)
     return playlists
 
