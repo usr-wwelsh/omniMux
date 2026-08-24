@@ -54,12 +54,17 @@ async def discover(
     }
     owned_artists: set[str] = {a.lower().strip() for _, a in rows}
 
-    n_rows = len(rows)
+    # Tracks with no real artist metadata (download_worker falls back to
+    # "Unknown") can't seed a meaningful recommendation — Last.fm has nothing
+    # to look up and the UI badge would just read "Because you like Unknown".
+    seedable_rows = [(t, a) for t, a in rows if a.lower().strip() not in ("", "unknown")]
+
+    n_rows = len(seedable_rows)
     third = n_rows // 3
     eras = [
-        rows[:third] if third > 0 else [],
-        rows[third : 2 * third] if third > 0 else [],
-        rows[2 * third :] if third > 0 else rows,
+        seedable_rows[:third] if third > 0 else [],
+        seedable_rows[third : 2 * third] if third > 0 else [],
+        seedable_rows[2 * third :] if third > 0 else seedable_rows,
     ]
     # Random era-spanning seeds for breadth. (title, artist, is_favorite)
     seeds: list[tuple[str, str, bool]] = []
@@ -70,7 +75,7 @@ async def discover(
     # Bias seeds toward what you actually listen to: pull most-played artists from
     # Navidrome's play counts and seed from a track you own by each of them.
     rows_by_artist: dict[str, list] = {}
-    for t, a in rows:
+    for t, a in seedable_rows:
         rows_by_artist.setdefault(a.lower().strip(), []).append((t, a))
     fav_albums = await get_frequent_albums(user.username, user.password, count=20)
     seen_fav: set[str] = set()
