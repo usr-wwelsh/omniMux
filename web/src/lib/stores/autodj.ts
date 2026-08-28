@@ -715,7 +715,7 @@ function startAmbient(minutes: number) {
   const pollMs = Math.min(thresholdMs, 5_000);
   _ambientTimer = setInterval(() => {
     const idleMs = Date.now() - _lastActivity;
-    if (idleMs >= thresholdMs) {
+    if (idleMs >= thresholdMs && get(currentTrack)) {
       showFullscreenPlayer.set(true);
       artExpandRequested.update((n) => n + 1);
     }
