@@ -106,9 +106,11 @@
           <h2 class="section-title">Recently played</h2>
           <a href="/history" class="see-all">History →</a>
         </div>
-        <div class="album-grid">
+        <div class="album-row">
           {#each recentAlbums as album (album.id)}
-            <AlbumCard {album} />
+            <div class="album-row-item">
+              <AlbumCard {album} />
+            </div>
           {/each}
         </div>
       </section>
@@ -155,7 +157,7 @@
 
     {#if randomSongs.length > 0}
       <section class="section">
-        <h2 class="section-title">Discover</h2>
+        <h2 class="section-title">Shuffle</h2>
         <TrackList songs={randomSongs} showAlbum />
       </section>
     {/if}
@@ -350,6 +352,22 @@
     gap: 16px;
   }
 
+  .album-row {
+    display: flex;
+    gap: 16px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .album-row-item {
+    flex: 0 0 160px;
+    min-width: 0;
+    scroll-snap-align: start;
+  }
+
   .mood-chips {
     display: flex;
     flex-wrap: wrap;
@@ -498,6 +516,12 @@
     .album-grid {
       grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
       gap: 12px;
+    }
+    .album-row {
+      gap: 12px;
+    }
+    .album-row-item {
+      flex-basis: 130px;
     }
   }
 </style>
