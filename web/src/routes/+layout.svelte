@@ -139,7 +139,7 @@
 {#if isLogin}
   {@render children()}
 {:else if $auth.authenticated}
-  <div class="app-shell" class:mobile={isMobile}>
+  <div class="app-shell" class:mobile={isMobile} class:has-player={!isMobile && !!$currentTrack}>
     {#if !isMobile}
       <Sidebar />
     {/if}
@@ -179,8 +179,12 @@
 <style>
   .app-shell {
     display: flex;
-    height: calc(100vh - var(--player-height));
+    height: 100vh;
     overflow: hidden;
+  }
+
+  .app-shell.has-player {
+    height: calc(100vh - var(--player-height));
   }
 
   .app-shell.mobile {
