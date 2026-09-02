@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { subsonic, coverArtUrl, type Album, type Song } from '$lib/subsonic';
+  import { subsonic, coverArtUrl, type Album, type Song, type Playlist } from '$lib/subsonic';
   import { errorMessage } from '$lib/errors';
   import { api, type YouTubeResult, type AlbumContext } from '$lib/api';
   import { isGuest } from '$lib/auth';
@@ -99,6 +99,7 @@
 
   let album = $state<Album | null>(null);
   let songs = $state<Song[]>([]);
+  let playlistsBySong = $state<Map<string, Playlist[]>>(new Map());
   let coverUrl = $state('');
   let loading = $state(true);
 
@@ -146,6 +147,9 @@
         .catch(() => { context = null; });
       // Fire YouTube check in the background — don't block render
       checkMissingTracks(data.album, data.songs);
+      subsonic.getPlaylistMembership()
+        .then((m) => { playlistsBySong = m; })
+        .catch(() => { playlistsBySong = new Map(); });
     } catch {
       album = null;
       songs = [];
@@ -508,7 +512,7 @@
         </button>
       </div>
     {:else}
-      <TrackList {songs} />
+      <TrackList {songs} {playlistsBySong} />
     {/if}
 
     {#if !$isGuest}

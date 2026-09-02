@@ -212,6 +212,12 @@ function mapPlaylist(p: RawPlaylist): Playlist {
   };
 }
 
+// Reverse songId -> playlists lookup, built by fetching every playlist's
+// contents once and cached briefly — mirrors the mood-playlist cache in autodj.ts.
+let _membershipCache: Map<string, Playlist[]> | null = null;
+let _membershipCacheAt = 0;
+const MEMBERSHIP_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 export const subsonic = {
   async ping(): Promise<boolean> {
     try {
@@ -353,6 +359,31 @@ export const subsonic = {
       playlist: mapPlaylist(p),
       songs: (p.entry || []).map(mapSong),
     };
+  },
+
+  // Which playlists each song belongs to, keyed by song id. Fetches every
+  // playlist's contents once and caches the result briefly.
+  async getPlaylistMembership(): Promise<Map<string, Playlist[]>> {
+    const now = Date.now();
+    if (_membershipCache && now - _membershipCacheAt < MEMBERSHIP_CACHE_TTL) {
+      return _membershipCache;
+    }
+    const playlists = await this.getPlaylists();
+    const results = await Promise.allSettled(
+      playlists.filter((p) => p.songCount > 0).map((p) => this.getPlaylist(p.id)),
+    );
+    const map = new Map<string, Playlist[]>();
+    for (const r of results) {
+      if (r.status !== 'fulfilled') continue;
+      const { playlist, songs } = r.value;
+      for (const s of songs) {
+        const list = map.get(s.id);
+        if (list) list.push(playlist); else map.set(s.id, [playlist]);
+      }
+    }
+    _membershipCache = map;
+    _membershipCacheAt = now;
+    return map;
   },
 
   async createPlaylist(name: string, songIds: string[] = []): Promise<Playlist> {
