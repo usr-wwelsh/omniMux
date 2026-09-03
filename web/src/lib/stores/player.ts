@@ -359,8 +359,15 @@ let _scrobbleTrackId: string | null = null;
 let _scrobbledThisTrack = false;
 let _nowPlayingTrackId: string | null = null;
 
+// Set right before currentTrack.set() in startCrossfade (Auto DJ's only entry
+// point into a track change) and consumed synchronously by the subscribe
+// callback below, so Auto DJ-selected tracks never pollute Navidrome's
+// "recently played" / play-count history.
+let _pendingAutoDJTrack = false;
+let _currentTrackIsAutoDJ = false;
+
 function scrobbleEnabled(): boolean {
-  return isThisDeviceActive() && get(auth).role !== 'guest';
+  return isThisDeviceActive() && get(auth).role !== 'guest' && !_currentTrackIsAutoDJ;
 }
 
 // Counts the play once the track passes the standard threshold (50% or 4 min).
@@ -383,6 +390,8 @@ function maybeScrobble(ct: number, dur: number) {
 currentTrack.subscribe((t) => {
   if (!t || t.id === _nowPlayingTrackId) return;
   _nowPlayingTrackId = t.id;
+  _currentTrackIsAutoDJ = _pendingAutoDJTrack;
+  _pendingAutoDJTrack = false;
   if (!scrobbleEnabled()) return;
   subsonic.scrobble(t.id, false).catch(() => {});
 });
@@ -1036,6 +1045,7 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
         }
 
         queueIndex.set(nextIdx);
+        _pendingAutoDJTrack = true;
         currentTrack.set(nextTrack);
         updateMediaSession(nextTrack);
         // Claim ownership — the actual server push happens in finishTransfer once
