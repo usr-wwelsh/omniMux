@@ -29,6 +29,7 @@
   });
   import FullscreenPlayer from '../components/FullscreenPlayer.svelte';
   import AddToPlaylistModal from '../components/AddToPlaylistModal.svelte';
+  import PlaylistPickerModal from '../components/PlaylistPickerModal.svelte';
 
   let { children } = $props();
 
@@ -174,6 +175,8 @@
   {#if !$isGuest}
     <AddToPlaylistModal />
   {/if}
+
+  <PlaylistPickerModal />
 {/if}
 
 <style>

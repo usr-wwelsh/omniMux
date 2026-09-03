@@ -1,9 +1,11 @@
 import { writable } from 'svelte/store';
-import type { Song } from '$lib/subsonic';
+import type { Playlist, Song } from '$lib/subsonic';
 
 export const showFullscreenPlayer = writable(false);
 // Set to a song to open the "Add to playlist" modal for it, null to close.
 export const addToPlaylistTarget = writable<Song | null>(null);
+// Set to the playlists a track belongs to, to open the "In playlists" picker modal. Null to close.
+export const playlistPickerTarget = writable<Playlist[] | null>(null);
 export const artModeActive = writable(false);
 // Bump this to signal FullscreenPlayer to enter art/expanded mode
 export const artExpandRequested = writable<number>(0);

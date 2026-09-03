@@ -2,7 +2,7 @@
   import { goto } from '$app/navigation';
   import { type Song, type Playlist } from '$lib/subsonic';
   import { playQueue, addSongToQueue, formatTime, currentTrack, isPlaying } from '$lib/stores/player';
-  import { addToPlaylistTarget } from '$lib/stores/ui';
+  import { addToPlaylistTarget, playlistPickerTarget } from '$lib/stores/ui';
   import { isGuest } from '$lib/auth';
 
   interface Props {
@@ -33,9 +33,13 @@
     onRemove?.(index);
   }
 
-  function handleGoToPlaylist(e: MouseEvent, playlistId: string) {
+  function handleGoToPlaylist(e: MouseEvent, playlists: Playlist[]) {
     e.stopPropagation();
-    goto(`/playlists/${playlistId}`);
+    if (playlists.length > 1) {
+      playlistPickerTarget.set(playlists);
+    } else {
+      goto(`/playlists/${playlists[0].id}`);
+    }
   }
 </script>
 
@@ -62,7 +66,7 @@
         <button
           class="track-playlist-badge"
           title={'In: ' + inPlaylists.map((p) => p.name).join(', ')}
-          onclick={(e) => handleGoToPlaylist(e, inPlaylists[0].id)}
+          onclick={(e) => handleGoToPlaylist(e, inPlaylists)}
         >
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M15 6H3v2h12V6zm0 4H3v2h12v-2zM3 16h8v-2H3v2zM17 6v8.18c-.31-.11-.65-.18-1-.18-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3V8h3V6h-5z"/></svg>
           {#if inPlaylists.length > 1}<span>{inPlaylists.length}</span>{/if}
