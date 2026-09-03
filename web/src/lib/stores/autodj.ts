@@ -6,11 +6,17 @@ import {
   queue, queueIndex, currentTrack, loop, isPlaying,
   songToTrack, addToQueue, jumpToQueue, getAudio,
   startCrossfade, stopCrossfade, registerCrossfadeChecker, preloadCrossfadeTrack, warmUpCrossfadeAudio,
-  suppressQueuePollApply, type DJMeta,
+  suppressQueuePollApply,
 } from './player';
 import { visMode, type VisMode, startAutoGain, stopAutoGain, freezeAutoGain, thawAutoGain, getAnalyser, fillFrequencyData, overallFromBuf } from './visualizer';
 import { showFullscreenPlayer, artExpandRequested, autoDJToast, artModeActive } from './ui';
 import { startSettingsPoll, stopSettingsPoll } from './settingsSync';
+import {
+  type DJPersonality, type Enrichment,
+  PERSONALITY_CONFIGS, resolveSkipIntro, selectNextTrack,
+} from './autodjEngine';
+
+export { PERSONALITY_CONFIGS };
 
 // ── Persisted settings ────────────────────────────────────────────────────────
 
@@ -30,139 +36,19 @@ export const visCycleInterval   = persistedWritable<'track'|'15'|'30'|'60'>('omn
 export const ambientIdleMinutes = persistedWritable('omnimux-ambient',  0,       Number);
 
 // ── DJ Personality ────────────────────────────────────────────────────────────
+// Personality configs, camelot-wheel key matching, and the candidate filter/score
+// pipeline live in ./autodjEngine (pure, no stores/DOM) so scripts/simulate-autodj.ts
+// can run the exact same selection logic offline against a snapshotted library.
 
-export type DJPersonality = 'none' | 'club' | 'relaxing' | 'chill' | 'workout';
-
-export interface PersonalityConfig {
-  label: string;
-  description: string;
-  bpmMin: number | null;            // exclude songs below this BPM
-  bpmMax: number | null;            // exclude songs above this BPM
-  skipIntroSeconds: number;         // seek incoming track forward by this many seconds
-  moodKeywords: string[];           // match against "Mood: X" Navidrome playlists
-  genreKeywords: string[];          // prefer songs whose genre contains one of these
-  excludeGenreKeywords: string[];   // hard-exclude songs whose genre contains any of these
-  pitchSlop: number;                // ±N fraction random variance on beatmatch rate
-  energyDropThreshold: number | null;
-  maxPlaySeconds: number | null;
-  prioritizeHighBpm: boolean;
-  minEnergy: number | null;         // hard floor on energy score (0–1, from mood analysis)
-  maxEnergy: number | null;         // hard ceiling on energy score
-  allowedMoods: string[] | null;    // if set, prefer songs with these mood labels
-  harmonicMix: boolean;             // prefer next track in a harmonically compatible key
-}
-
-export const PERSONALITY_CONFIGS: Record<DJPersonality, PersonalityConfig> = {
-  none: {
-    label: 'None', description: 'Standard Auto DJ',
-    bpmMin: null, bpmMax: null, skipIntroSeconds: 0,
-    moodKeywords: [], genreKeywords: [], excludeGenreKeywords: [],
-    pitchSlop: 0.005, energyDropThreshold: null, maxPlaySeconds: null,
-    prioritizeHighBpm: false, minEnergy: null, maxEnergy: null,
-    allowedMoods: null, harmonicMix: false,
-  },
-  club: {
-    label: 'Club', description: 'Dance/EDM — skip to the drop',
-    bpmMin: 120, bpmMax: null, skipIntroSeconds: 45,
-    moodKeywords: ['energetic', 'upbeat', 'dance'],
-    genreKeywords: ['dance', 'edm', 'electronic', 'house', 'techno', 'trance', 'electro', 'club'],
-    excludeGenreKeywords: ['ambient', 'classical', 'new age', 'acoustic', 'folk', 'country', 'blues', 'jazz', 'sleep', 'meditation'],
-    pitchSlop: 0.004, energyDropThreshold: 0.15, maxPlaySeconds: 150,
-    prioritizeHighBpm: false, minEnergy: 0.65, maxEnergy: null,
-    allowedMoods: ['energetic', 'happy', 'upbeat', 'excited'],
-    harmonicMix: true,
-  },
-  relaxing: {
-    label: 'Relaxing', description: 'Ambient & calm — full songs',
-    bpmMin: null, bpmMax: 100, skipIntroSeconds: 0,
-    moodKeywords: ['relaxing', 'ambient', 'calm'],
-    genreKeywords: [], excludeGenreKeywords: ['metal', 'punk', 'hardcore', 'drum and bass', 'dnb', 'edm', 'dance', 'techno'],
-    pitchSlop: 0.000, energyDropThreshold: null, maxPlaySeconds: null,
-    prioritizeHighBpm: false, minEnergy: null, maxEnergy: 0.45,
-    allowedMoods: ['relaxing', 'calm', 'peaceful', 'ambient', 'sad', 'melancholic'],
-    harmonicMix: false,
-  },
-  chill: {
-    label: 'Chill', description: 'Lo-fi & mellow mid-tempo vibes',
-    bpmMin: 75, bpmMax: 115, skipIntroSeconds: 0,
-    moodKeywords: ['chill', 'mellow', 'lofi'],
-    genreKeywords: [], excludeGenreKeywords: ['metal', 'punk', 'hardcore', 'edm'],
-    pitchSlop: 0.006, energyDropThreshold: null, maxPlaySeconds: null,
-    prioritizeHighBpm: false, minEnergy: null, maxEnergy: 0.60,
-    allowedMoods: ['chill', 'mellow', 'happy', 'peaceful', 'calm'],
-    harmonicMix: true,
-  },
-  workout: {
-    label: 'Workout', description: 'High-energy — ~1 min per track',
-    bpmMin: 130, bpmMax: null, skipIntroSeconds: 20,
-    moodKeywords: ['energetic', 'intense', 'upbeat'],
-    genreKeywords: [], excludeGenreKeywords: ['ambient', 'classical', 'new age', 'acoustic', 'folk', 'sleep'],
-    pitchSlop: 0.003, energyDropThreshold: null, maxPlaySeconds: 60,
-    prioritizeHighBpm: true, minEnergy: 0.70, maxEnergy: null,
-    allowedMoods: ['energetic', 'intense', 'upbeat', 'excited', 'angry'],
-    harmonicMix: false,
-  },
-};
+export type { DJPersonality };
 
 export const djPersonality = persistedWritable<DJPersonality>('omnimux-dj-personality', 'none', (v) => v as DJPersonality);
-
-// For club/workout: if the incoming track is longer than 4 minutes, skip to the
-// halfway point (right before a likely peak) instead of the fixed intro offset.
-function resolveSkipIntro(config: PersonalityConfig, track: { duration: number }): number {
-  if (config.skipIntroSeconds > 0 && track.duration > 240) {
-    return Math.floor(track.duration * 0.5);
-  }
-  return config.skipIntroSeconds;
-}
 
 // ── Runtime state ─────────────────────────────────────────────────────────────
 
 export const autoDJActive = writable<boolean>(false);
 
-// ── Camelot wheel (harmonic mixing) ──────────────────────────────────────────
-
-const _CAMELOT: Record<string, string> = {
-  'c major': '8B',  'g major': '9B',  'd major': '10B', 'a major': '11B',
-  'e major': '12B', 'b major': '1B',  'f# major': '2B', 'gb major': '2B',
-  'db major': '3B', 'c# major': '3B', 'ab major': '4B', 'g# major': '4B',
-  'eb major': '5B', 'd# major': '5B', 'bb major': '6B', 'a# major': '6B',
-  'f major': '7B',
-  'a minor': '8A',  'e minor': '9A',  'b minor': '10A', 'f# minor': '11A',
-  'gb minor': '11A','c# minor': '12A','db minor': '12A','g# minor': '1A',
-  'ab minor': '1A', 'd# minor': '2A', 'eb minor': '2A', 'a# minor': '3A',
-  'bb minor': '3A', 'f minor': '4A',  'c minor': '5A',  'g minor': '6A',
-  'd minor': '7A',
-};
-
-function toCamelot(rawKey: string): string | null {
-  if (!rawKey) return null;
-  const k = rawKey.trim().toLowerCase();
-  if (_CAMELOT[k]) return _CAMELOT[k];
-  // "Am", "C#m", "F#m" shorthand
-  const shortMinor = k.match(/^([a-g][b#]?)m$/);
-  if (shortMinor) return _CAMELOT[shortMinor[1] + ' minor'] ?? null;
-  // "C", "F#", "Bb" — assume major
-  const plain = k.match(/^([a-g][b#]?)$/);
-  if (plain) return _CAMELOT[plain[1] + ' major'] ?? null;
-  // "C maj" / "A min" abbreviations
-  const abbrev = k.replace(/\bmaj\b/, 'major').replace(/\bmin\b/, 'minor');
-  return _CAMELOT[abbrev] ?? null;
-}
-
-function isCompatibleKey(a: string, b: string): boolean {
-  if (a === b) return true;
-  const numA = parseInt(a), numB = parseInt(b);
-  const modeA = a.slice(-1), modeB = b.slice(-1);
-  if (modeA === modeB) {
-    const diff = Math.abs(numA - numB);
-    return diff === 1 || diff === 11; // adjacent on the wheel (wraps 12→1)
-  }
-  return numA === numB; // same number, relative major/minor
-}
-
 // ── Enrichment cache and energy arc ──────────────────────────────────────────
-
-type Enrichment = { mood?: string; energy?: number; key?: string };
 
 // Persists between fillQueue calls — built up as we enrich song pools
 const _enrichCache = new Map<string, Enrichment>(); // navidrome song id → data
@@ -206,6 +92,7 @@ let _pendingSkipOffset = 0; // skip offset for the track about to be crossfaded 
 // Energy-drop detection for Club/Workout personalities
 const ENERGY_HISTORY_MAX = 4;        // seconds of sustained low energy needed
 const ENERGY_SAMPLE_INTERVAL = 1000; // ms between samples
+const ENERGY_DROP_GRACE_SECONDS = 5; // real playback time after track start before judging a drop
 let _energyHistory: number[] = [];
 let _lastEnergySample = 0;
 let _energyDropFired = false;
@@ -227,8 +114,12 @@ function _sampleEnergy(ct: number): void {
 
   // Need full history before we start judging
   if (_energyHistory.length < ENERGY_HISTORY_MAX) return;
-  // Must be past the personality's intro window to avoid reacting to song intros
-  if (ct < config.skipIntroSeconds) return;
+  // Give the track a few seconds of real playback after it starts before judging a drop.
+  // `ct` is often already offset past the intro (skipIntroSeconds seeks the track forward
+  // before it becomes current), so comparing it directly to skipIntroSeconds is a no-op —
+  // measure elapsed time since this track actually started instead.
+  const elapsedSinceStart = ct - _currentTrackSkipOffset;
+  if (elapsedSinceStart < ENERGY_DROP_GRACE_SECONDS) return;
   const threshold = config.energyDropThreshold;
   if (threshold === null) return;
 
@@ -421,16 +312,10 @@ async function fillQueue() {
       }
     }
 
-    // ── Hard-exclude genres that don't fit this personality ───────────────────
-    if (config.excludeGenreKeywords.length > 0) {
-      const lowerExcludes = config.excludeGenreKeywords.map((g) => g.toLowerCase());
-      pool = pool.filter((s) => {
-        if (!s.genre) return true; // unknown genre — give benefit of the doubt
-        return !lowerExcludes.some((kw) => s.genre!.toLowerCase().includes(kw));
-      });
-      // If exclusion wiped the entire pool (tiny library edge case), restore pre-exclusion pool
-      if (pool.length === 0) pool = (await subsonic.getRandomSongs(poolSize)).filter((s) => !excludeIds.has(s.id));
-    }
+    // Genre-exclude, BPM, genre-include, energy, mood, and high-BPM-priority filtering all
+    // happen inside selectNextTrack (./autodjEngine) below, against the full merged pool —
+    // enrichment runs on the unfiltered pool so the pipeline has energy/mood/key data for
+    // every candidate it might end up considering.
 
     // ── Enrich the pool with mood/energy/key from our analysis DB ────────────
     try {
@@ -449,104 +334,16 @@ async function fillQueue() {
       // Enrichment unavailable — continue with genre/BPM filtering only
     }
 
-    // ── BPM range filter ─────────────────────────────────────────────────────
-    let filtered = pool;
-    if (config.bpmMin !== null || config.bpmMax !== null) {
-      const inRange = pool.filter((s) => {
-        if (!s.bpm) return false;
-        if (config.bpmMin !== null && s.bpm < config.bpmMin) return false;
-        if (config.bpmMax !== null && s.bpm > config.bpmMax) return false;
-        return true;
-      });
-      // Songs with no BPM data are fallbacks only — don't include them if we have enough in-range
-      filtered = inRange.length >= 5 ? inRange : inRange.length > 0 ? inRange : pool;
-    }
-
-    // ── Genre include filter ──────────────────────────────────────────────────
-    if (config.genreKeywords.length > 0) {
-      const lowerGenres = config.genreKeywords.map((g) => g.toLowerCase());
-      const genreMatches = filtered.filter(
-        (s) => s.genre && lowerGenres.some((kw) => s.genre!.toLowerCase().includes(kw))
-      );
-      if (genreMatches.length >= 5) filtered = genreMatches;
-      // If < 5 genre matches, keep BPM-filtered pool (don't expand back to full pool)
-    }
-
-    // ── Energy filter (from enrichment data) ─────────────────────────────────
-    if (config.minEnergy !== null || config.maxEnergy !== null) {
-      const energyFiltered = filtered.filter((s) => {
-        const e = _enrichCache.get(s.id);
-        if (!e?.energy) return true; // no data — keep as fallback
-        if (config.minEnergy !== null && e.energy < config.minEnergy) return false;
-        if (config.maxEnergy !== null && e.energy > config.maxEnergy) return false;
-        return true;
-      });
-      if (energyFiltered.length >= 3) filtered = energyFiltered;
-    }
-
-    // ── Mood filter (from enrichment data) ───────────────────────────────────
-    if (config.allowedMoods && config.allowedMoods.length > 0) {
-      const lowerMoods = config.allowedMoods.map((m) => m.toLowerCase());
-      const moodFiltered = filtered.filter((s) => {
-        const e = _enrichCache.get(s.id);
-        if (!e?.mood) return true; // no mood data — give benefit of the doubt
-        return lowerMoods.some((m) => e.mood!.toLowerCase().includes(m));
-      });
-      if (moodFiltered.length >= 3) filtered = moodFiltered;
-    }
-
-    // ── High-BPM priority (Workout) ───────────────────────────────────────────
-    if (config.prioritizeHighBpm) {
-      const withBpm = filtered.filter((s) => s.bpm).sort((a, b) => (b.bpm ?? 0) - (a.bpm ?? 0));
-      if (withBpm.length > 0) {
-        filtered = withBpm.slice(0, Math.max(1, Math.ceil(withBpm.length * 0.25)));
-      }
-    }
-
-    // ── Candidate selection: BPM + harmonic + energy arc ─────────────────────
-    let candidate: Song | undefined;
-
-    // Compute energy arc target: ramp from minEnergy to minEnergy+0.2 over first 8 songs
-    const arcTarget = (() => {
-      if (config.minEnergy === null) return null;
-      const rampSongs = 8;
-      const songsPlayed = _setEnergyHistory.length;
-      const t = Math.min(songsPlayed / rampSongs, 1);
-      return config.minEnergy + t * 0.20;
-    })();
-
-    // Score each candidate: weighted sum of BPM match, energy arc proximity, harmonic compatibility
-    function scoreWithMeta(s: Song): { total: number; meta: DJMeta } {
-      let bpm = 0, energy = 0;
-      let harmonic = false;
-      if (currentBpm && s.bpm) {
-        const bpmDiff = Math.abs(s.bpm - currentBpm) / currentBpm;
-        bpm = Math.max(0, 1 - bpmDiff / (tolerance * 2)) * 3;
-      }
-      const enrich = _enrichCache.get(s.id);
-      if (enrich?.energy !== undefined && arcTarget !== null) {
-        const eDiff = Math.abs(enrich.energy - arcTarget);
-        energy = Math.max(0, 1 - eDiff / 0.3) * 2;
-      }
-      if (config.harmonicMix && _currentEnrichment?.key && enrich?.key) {
-        const ca = toCamelot(_currentEnrichment.key);
-        const cb = toCamelot(enrich.key);
-        if (ca && cb && isCompatibleKey(ca, cb)) harmonic = true;
-      }
-      const total = bpm + energy + (harmonic ? 4 : 0) + Math.random() * 0.5;
-      return { total, meta: { bpm, energy, harmonic } };
-    }
-
-    let candidateMeta: DJMeta | undefined;
-    if (filtered.length > 0) {
-      // Sort by score and pick from the top 5 (preserves some randomness)
-      const scored = filtered.slice()
-        .map((s) => ({ s, ...scoreWithMeta(s) }))
-        .sort((a, b) => b.total - a.total);
-      const pick = scored[Math.floor(Math.random() * Math.min(5, scored.length))];
-      candidate = pick.s;
-      candidateMeta = pick.meta;
-    }
+    // ── Candidate selection: genre/BPM/energy/mood filters, then BPM + harmonic + energy-arc score ──
+    const { candidate: scoredCandidate, meta: candidateMeta } = selectNextTrack(pool, {
+      config,
+      currentBpm,
+      bpmTolerance: tolerance,
+      enrichCache: _enrichCache,
+      currentEnrichment: _currentEnrichment,
+      songsPlayedThisSession: _setEnergyHistory.length,
+    });
+    let candidate: Song | undefined = scoredCandidate;
 
     // Last resort: personality/BPM filters wiped the pool (small library edge case).
     // Still prefer non-recent songs; only pick a recently-played one if there's truly no other option.
