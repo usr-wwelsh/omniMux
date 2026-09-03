@@ -17,10 +17,21 @@ if (browser) {
 // so these must be module-level singletons that survive art-mode open/close.
 
 let _ctx: AudioContext | null = null;
-let _analyser: AnalyserNode | null = null;      // vis + energy detection (fftSize=256, freq domain)
+let _analyser: AnalyserNode | null = null;      // vis (post-gain, so quiet tracks still animate)
+let _rawAnalyser: AnalyserNode | null = null;   // energy detection (pre-gain, unaffected by loudness normalization)
 let _loudnessNode: AnalyserNode | null = null;  // RMS/LUFS measurement (fftSize=4096, time domain)
 let _gainNode: GainNode | null = null;
 let _connected = false;
+
+// Pre-gain tap for Auto DJ's energy-drop detector. The auto-gain node's compensation
+// carries over across track changes (asymmetric smoothing recovers slowly from a cut),
+// so reading energy downstream of it can show a loud→normal transition as a false
+// "energy drop" on the new track for several seconds. This bypasses that entirely.
+export function getRawAnalyser(): AnalyserNode | null {
+  if (typeof window === 'undefined') return null;
+  getAnalyser(); // ensures _ctx/_connected/_rawAnalyser are set up
+  return _rawAnalyser;
+}
 
 export function getAnalyser(): AnalyserNode | null {
   if (typeof window === 'undefined') return null;
@@ -49,8 +60,15 @@ export function getAnalyser(): AnalyserNode | null {
     _analyser = _ctx.createAnalyser();
     _analyser.fftSize = 256; // 128 frequency bins
     _analyser.smoothingTimeConstant = 0.8;
+    // Raw energy analyser: same shape as the vis analyser, but tapped before the
+    // gain node so auto-gain compensation can't skew what it reads.
+    _rawAnalyser = _ctx.createAnalyser();
+    _rawAnalyser.fftSize = 256;
+    _rawAnalyser.smoothingTimeConstant = 0.8;
     // Chain: source → gain → loudness tap → vis tap → speakers
+    //             └→ raw energy tap (not connected to destination — analysis only)
     source.connect(_gainNode);
+    source.connect(_rawAnalyser);
     _gainNode.connect(_loudnessNode);
     _loudnessNode.connect(_analyser);
     _analyser.connect(_ctx.destination);

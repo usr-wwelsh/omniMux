@@ -8,7 +8,7 @@ import {
   startCrossfade, stopCrossfade, registerCrossfadeChecker, preloadCrossfadeTrack, warmUpCrossfadeAudio,
   suppressQueuePollApply,
 } from './player';
-import { visMode, type VisMode, startAutoGain, stopAutoGain, freezeAutoGain, thawAutoGain, getAnalyser, fillFrequencyData, overallFromBuf } from './visualizer';
+import { visMode, type VisMode, startAutoGain, stopAutoGain, freezeAutoGain, thawAutoGain, getRawAnalyser, fillFrequencyData, overallFromBuf } from './visualizer';
 import { showFullscreenPlayer, artExpandRequested, autoDJToast, artModeActive } from './ui';
 import { startSettingsPoll, stopSettingsPoll } from './settingsSync';
 import {
@@ -102,7 +102,7 @@ function _sampleEnergy(ct: number): void {
   if (now - _lastEnergySample < ENERGY_SAMPLE_INTERVAL) return;
   _lastEnergySample = now;
 
-  const analyser = getAnalyser();
+  const analyser = getRawAnalyser();
   if (!analyser) return;
   const buf = new Uint8Array(analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
   fillFrequencyData(analyser, buf);
