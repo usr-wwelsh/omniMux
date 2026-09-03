@@ -53,6 +53,7 @@ async def _save_snapshot(session: AsyncSession, file_paths: list[str]) -> None:
 class TagWriteRequest(BaseModel):
     file_paths: list[str]
     tags: dict[str, str]
+    clear: list[str] = []
 
 
 class DeleteRequest(BaseModel):
@@ -351,11 +352,9 @@ async def write_tags(
         # A hand-edited album name must win over the MusicBrainz album ID already on
         # the file, or Navidrome keeps grouping by the ID and the rename looks lost.
         current = tagger.read_tags_for_path(fp) or {}
-        clear = (
-            ["release_mbid", "release_group_mbid"]
-            if new_album and albums.norm_album(new_album) != albums.norm_album(current.get("album", ""))
-            else []
-        )
+        clear = list(body.clear)
+        if new_album and albums.norm_album(new_album) != albums.norm_album(current.get("album", "")):
+            clear += ["release_mbid", "release_group_mbid"]
         u, errs = tagger.write_tags([fp], body.tags, clear=clear)
         updated += u
         errors.extend(errs)

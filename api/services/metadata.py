@@ -55,8 +55,9 @@ def _build_metadata(info: dict, mood_result: dict | None) -> dict:
         meta["bpm"] = str(int(round(mood_result.get("tempo", 0))))
         meta["energy"] = str(round(mood_result.get("energy", 0), 2))
         meta["key"] = mood_result.get("key", "")
-        if not meta["genre"] and mood_result.get("mood"):
-            meta["genre"] = mood_result["mood"]
+        # mood is a tempo/energy heuristic, not a genre classifier — it mislabels
+        # anything with no clear beat (jazz, chant, bluegrass) as house/techno/club.
+        # Never let it stand in for a real genre tag.
 
     return meta
 

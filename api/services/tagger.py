@@ -104,6 +104,7 @@ _CLEARABLE = {
     "release_mbid": ("musicbrainz_albumid",),
     "release_group_mbid": ("musicbrainz_releasegroupid",),
     "compilation": ("compilation",),
+    "genre": ("genre",),
 }
 
 
