@@ -88,6 +88,14 @@ let _preloadTriggered = false;
 // Tracked explicitly so the maxPlay timer starts from the right position.
 let _currentTrackSkipOffset = 0;
 let _pendingSkipOffset = 0; // skip offset for the track about to be crossfaded in
+// Wall-clock moment the current track became primary. Deliberately NOT derived from
+// `ct - _currentTrackSkipOffset`: preloadCrossfadeTrack() starts the incoming track
+// silently playing (volume 0) up to PRELOAD_AHEAD seconds before the fade even begins,
+// and that silent lead-in time ends up baked into the synced position primary lands on
+// when the swap happens. Using audio-position math for the floor below let a track's
+// *buffering* time count as *listened* time, so the 30s floor could already be "satisfied"
+// mere seconds after the track actually became audible.
+let _currentTrackBecameCurrentAt = 0;
 
 // Hard floor: never crossfade out of a track before it's had this much real
 // playback, regardless of which trigger (energy-drop, max-play, or end-of-track) fires.
@@ -154,7 +162,7 @@ function crossfadeCheck(ct: number, dur: number) {
   if (!dur || ct <= 0) return;
 
   // Hard floor — no trigger below may fire until the track has actually played this long.
-  if (ct - _currentTrackSkipOffset < MIN_PLAY_SECONDS_BEFORE_CROSSFADE) return;
+  if (Date.now() - _currentTrackBecameCurrentAt < MIN_PLAY_SECONDS_BEFORE_CROSSFADE * 1000) return;
 
   // Energy-drop early exit (Club/Workout personalities)
   _sampleEnergy(ct);
@@ -606,6 +614,9 @@ currentTrack.subscribe((t) => {
   // the gain so it calibrates fresh to the new track's loudness.
   _currentTrackSkipOffset = _pendingSkipOffset;
   _pendingSkipOffset = 0;
+  // Real wall-clock moment this track became audible as primary — used for the
+  // min-play-before-crossfade floor below, independent of song-position bookkeeping.
+  _currentTrackBecameCurrentAt = Date.now();
   if (get(autoDJActive)) thawAutoGain();
 
   if (t?.id) {
