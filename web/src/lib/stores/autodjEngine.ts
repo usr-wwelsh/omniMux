@@ -42,7 +42,12 @@ export const PERSONALITY_CONFIGS: Record<DJPersonality, PersonalityConfig> = {
     genreKeywords: ['dance', 'edm', 'electronic', 'house', 'techno', 'trance', 'electro', 'club'],
     excludeGenreKeywords: ['ambient', 'classical', 'new age', 'acoustic', 'folk', 'country', 'blues', 'jazz', 'sleep', 'meditation'],
     pitchSlop: 0.004, energyDropThreshold: 0.15, maxPlaySeconds: 150,
-    prioritizeHighBpm: false, minEnergy: 0.65, maxEnergy: null,
+    // 0.65 was set against no real data — the library's actual club/EDM enrichment
+    // scores median 0.44 (p75 0.57), so the strict filter almost always starved and
+    // fell back to admitting energy-untagged tracks. 0.35 sits below the median,
+    // still filters the bottom quartile, and keeps the ramp (+0.20 over 8 songs)
+    // topping out near the real p75 instead of an unreachable ceiling.
+    prioritizeHighBpm: false, minEnergy: 0.35, maxEnergy: null,
     allowedMoods: ['energetic', 'happy', 'upbeat', 'excited'],
     harmonicMix: true,
   },
@@ -80,11 +85,12 @@ export const PERSONALITY_CONFIGS: Record<DJPersonality, PersonalityConfig> = {
 
 // For club/workout: if the incoming track is longer than 4 minutes, skip to the
 // halfway point (right before a likely peak) instead of the fixed intro offset.
+// Never skip past the track's own midpoint — a short jingle/stinger that slipped
+// through genre filtering would otherwise get seeked past its end entirely.
 export function resolveSkipIntro(config: PersonalityConfig, track: { duration: number }): number {
-  if (config.skipIntroSeconds > 0 && track.duration > 240) {
-    return Math.floor(track.duration * 0.5);
-  }
-  return config.skipIntroSeconds;
+  if (config.skipIntroSeconds === 0) return 0;
+  if (track.duration > 240) return Math.floor(track.duration * 0.5);
+  return Math.min(config.skipIntroSeconds, Math.floor(track.duration * 0.5));
 }
 
 // ── Camelot wheel (harmonic mixing) ──────────────────────────────────────────
