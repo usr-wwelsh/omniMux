@@ -21,3 +21,7 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Auto DJ simulator — local-only tooling, never committed
+scripts/
+.autodj-sim-cache.json
