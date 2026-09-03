@@ -89,6 +89,10 @@ let _preloadTriggered = false;
 let _currentTrackSkipOffset = 0;
 let _pendingSkipOffset = 0; // skip offset for the track about to be crossfaded in
 
+// Hard floor: never crossfade out of a track before it's had this much real
+// playback, regardless of which trigger (energy-drop, max-play, or end-of-track) fires.
+const MIN_PLAY_SECONDS_BEFORE_CROSSFADE = 30;
+
 // Energy-drop detection for Club/Workout personalities
 const ENERGY_HISTORY_MAX = 4;        // seconds of sustained low energy needed
 const ENERGY_SAMPLE_INTERVAL = 1000; // ms between samples
@@ -148,6 +152,9 @@ function crossfadeCheck(ct: number, dur: number) {
   const cfSecs = get(crossfadeDuration);
   if (cfSecs === 0) return;
   if (!dur || ct <= 0) return;
+
+  // Hard floor — no trigger below may fire until the track has actually played this long.
+  if (ct - _currentTrackSkipOffset < MIN_PLAY_SECONDS_BEFORE_CROSSFADE) return;
 
   // Energy-drop early exit (Club/Workout personalities)
   _sampleEnergy(ct);
