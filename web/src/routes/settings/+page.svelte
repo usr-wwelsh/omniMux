@@ -365,6 +365,8 @@
         Contribute on GitHub
       </a>
     </div>
+
+    <p class="about-shoutout">Shout out to my dear friends Sam and Derick.</p>
   </section>
 </div>
 
@@ -769,6 +771,12 @@
 
   .about-link:hover {
     border-color: var(--accent);
+  }
+
+  .about-shoutout {
+    margin: 14px 0 0;
+    font-size: 12px;
+    color: var(--text-subdued);
   }
 
   .personality-options {
