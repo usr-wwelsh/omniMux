@@ -50,6 +50,11 @@
   let knownDevices = $state<KnownDevice[]>([]);
   let thisDeviceId = $state('');
 
+  let moodBackfilling = $state(false);
+  let moodSyncing = $state(false);
+  let moodResult = $state<string | null>(null);
+  let moodError = $state('');
+
   async function loadDevices() {
     try {
       knownDevices = await api.getKnownDevices();
@@ -101,6 +106,37 @@
       guestError = errorMessage(e, 'Failed to update guest access');
     } finally {
       guestToggling = false;
+    }
+  }
+
+  async function backfillMoods() {
+    moodBackfilling = true;
+    moodResult = null;
+    moodError = '';
+    try {
+      const result = await api.backfillMoods();
+      moodResult = `Analyzed ${result.updated} of ${result.total} tracks. Now click "Sync mood playlists".`;
+    } catch (e) {
+      moodError = errorMessage(e, 'Failed to analyze moods');
+    } finally {
+      moodBackfilling = false;
+    }
+  }
+
+  async function syncMoods() {
+    moodSyncing = true;
+    moodResult = null;
+    moodError = '';
+    try {
+      const result = await api.syncMoodPlaylists();
+      const moods = Object.entries(result.synced);
+      moodResult = moods.length === 0
+        ? 'No mood data found. Download some tracks first.'
+        : `Synced: ${moods.map(([m, n]) => `${m} (${n})`).join(', ')}`;
+    } catch (e) {
+      moodError = errorMessage(e, 'Failed to sync mood playlists');
+    } finally {
+      moodSyncing = false;
     }
   }
 </script>
@@ -282,6 +318,30 @@
       </ul>
     {/if}
   </section>
+
+  {#if !$isGuest}
+  <section class="settings-section">
+    <h2 class="section-title">Mood Playlists</h2>
+    <div class="setting-info" style="margin-bottom: 16px;">
+      <span class="setting-desc">Auto-generated "Mood: …" playlists built from per-track mood analysis. New downloads are analyzed automatically — these actions backfill older tracks and (re)build the playlists from whatever mood data exists.</span>
+    </div>
+
+    <div class="mood-actions">
+      <button class="action-btn" onclick={backfillMoods} disabled={moodBackfilling || moodSyncing}>
+        {moodBackfilling ? 'Analyzing…' : 'Analyze moods'}
+      </button>
+      <button class="action-btn" onclick={syncMoods} disabled={moodSyncing || moodBackfilling}>
+        {moodSyncing ? 'Syncing…' : 'Sync mood playlists'}
+      </button>
+    </div>
+    {#if moodError}
+      <p class="guest-error">{moodError}</p>
+    {/if}
+    {#if moodResult}
+      <p class="mood-result">{moodResult}</p>
+    {/if}
+  </section>
+  {/if}
 
   {#if !$isGuest}
   <section class="settings-section">
@@ -608,6 +668,39 @@
     margin-top: 8px;
     font-size: 13px;
     color: var(--danger);
+  }
+
+  .mood-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .action-btn {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-elevated);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .action-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+  }
+
+  .action-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .mood-result {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
   }
 
   .empty-text {

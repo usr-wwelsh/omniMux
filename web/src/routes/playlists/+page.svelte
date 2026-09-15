@@ -2,7 +2,6 @@
   import { goto } from '$app/navigation';
   import { errorMessage } from '$lib/errors';
   import { subsonic, type Playlist, type Song, coverArtUrl } from '$lib/subsonic';
-  import { api } from '$lib/api';
   import { isGuest } from '$lib/auth';
   import { focusOnMount } from '$lib/focusOnMount';
 
@@ -10,9 +9,6 @@
 
   let playlists = $state<Playlist[]>([]);
   let loading = $state(true);
-  let syncing = $state(false);
-  let backfilling = $state(false);
-  let syncResult = $state<string | null>(null);
   let coverArts = $state<Map<string, string[]>>(new Map());
   let creatingPlaylist = $state(false);
   let newPlaylistName = $state('');
@@ -90,40 +86,6 @@
     }));
   }
 
-  async function backfillMoods() {
-    backfilling = true;
-    syncResult = null;
-    try {
-      const result = await api.backfillMoods();
-      syncResult = `Analyzed ${result.updated} of ${result.total} tracks. Now click "Sync mood playlists".`;
-    } catch (e) {
-      syncResult = `Error: ${errorMessage(e)}`;
-    } finally {
-      backfilling = false;
-    }
-  }
-
-  async function syncMoods() {
-    syncing = true;
-    syncResult = null;
-    try {
-      const result = await api.syncMoodPlaylists();
-      const moods = Object.entries(result.synced);
-      if (moods.length === 0) {
-        syncResult = 'No mood data found. Download some tracks first.';
-      } else {
-        syncResult = `Synced: ${moods.map(([m, n]) => `${m} (${n})`).join(', ')}`;
-        // Refresh playlist list
-        playlists = await subsonic.getPlaylists();
-        await loadCoverArts(playlists);
-      }
-    } catch (e) {
-      syncResult = `Error: ${errorMessage(e)}`;
-    } finally {
-      syncing = false;
-    }
-  }
-
   async function createPlaylist() {
     const name = newPlaylistName.trim();
     if (!name) return;
@@ -163,20 +125,10 @@
         <button class="sync-btn" onclick={() => (creatingPlaylist = true)}>New playlist</button>
       {/if}
     {/if}
-    <button class="sync-btn" onclick={backfillMoods} disabled={backfilling || syncing}>
-      {backfilling ? 'Analyzing…' : 'Analyze moods'}
-    </button>
-    <button class="sync-btn" onclick={syncMoods} disabled={syncing || backfilling}>
-      {syncing ? 'Syncing…' : 'Sync mood playlists'}
-    </button>
   </div>
 
   {#if createError}
     <p class="sync-result error">{createError}</p>
-  {/if}
-
-  {#if syncResult}
-    <p class="sync-result">{syncResult}</p>
   {/if}
 
   {#if !loading && playlists.length > 0}
