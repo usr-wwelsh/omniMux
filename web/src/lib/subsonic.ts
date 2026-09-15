@@ -70,6 +70,8 @@ interface RawPlaylist {
   songCount?: number;
   duration?: number;
   coverArt?: string;
+  created?: string;
+  changed?: string;
   entry?: RawSong[];
 }
 
@@ -140,6 +142,8 @@ export interface Playlist {
   songCount: number;
   duration: number;
   coverArt?: string;
+  createdAt?: string;
+  changedAt?: string;
 }
 
 export interface Artist {
@@ -209,11 +213,16 @@ function mapPlaylist(p: RawPlaylist): Playlist {
   return {
     id: p.id, name: p.name, songCount: p.songCount || 0,
     duration: p.duration || 0, coverArt: p.coverArt,
+    createdAt: p.created, changedAt: p.changed,
   };
 }
 
-// Reverse songId -> playlists lookup, built by fetching every playlist's
-// contents once and cached briefly — mirrors the mood-playlist cache in autodj.ts.
+// Every playlist's song list, fetched once and cached briefly. Backs both the
+// song -> playlists membership lookup and playlist track search.
+let _contentsCache: Map<string, Song[]> | null = null;
+let _contentsCacheAt = 0;
+const CONTENTS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 let _membershipCache: Map<string, Playlist[]> | null = null;
 let _membershipCacheAt = 0;
 const MEMBERSHIP_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -361,21 +370,39 @@ export const subsonic = {
     };
   },
 
-  // Which playlists each song belongs to, keyed by song id. Fetches every
-  // playlist's contents once and caches the result briefly.
-  async getPlaylistMembership(): Promise<Map<string, Playlist[]>> {
+  // Every playlist's songs, keyed by playlist id. Used for both membership
+  // lookup and searching playlists by track title/artist.
+  async getPlaylistContents(): Promise<Map<string, Song[]>> {
     const now = Date.now();
-    if (_membershipCache && now - _membershipCacheAt < MEMBERSHIP_CACHE_TTL) {
-      return _membershipCache;
+    if (_contentsCache && now - _contentsCacheAt < CONTENTS_CACHE_TTL) {
+      return _contentsCache;
     }
     const playlists = await this.getPlaylists();
     const results = await Promise.allSettled(
       playlists.filter((p) => p.songCount > 0).map((p) => this.getPlaylist(p.id)),
     );
-    const map = new Map<string, Playlist[]>();
+    const map = new Map<string, Song[]>();
     for (const r of results) {
       if (r.status !== 'fulfilled') continue;
-      const { playlist, songs } = r.value;
+      map.set(r.value.playlist.id, r.value.songs);
+    }
+    _contentsCache = map;
+    _contentsCacheAt = now;
+    return map;
+  },
+
+  // Which playlists each song belongs to, keyed by song id.
+  async getPlaylistMembership(): Promise<Map<string, Playlist[]>> {
+    const now = Date.now();
+    if (_membershipCache && now - _membershipCacheAt < MEMBERSHIP_CACHE_TTL) {
+      return _membershipCache;
+    }
+    const [playlists, contents] = await Promise.all([this.getPlaylists(), this.getPlaylistContents()]);
+    const byId = new Map(playlists.map((p) => [p.id, p]));
+    const map = new Map<string, Playlist[]>();
+    for (const [playlistId, songs] of contents) {
+      const playlist = byId.get(playlistId);
+      if (!playlist) continue;
       for (const s of songs) {
         const list = map.get(s.id);
         if (list) list.push(playlist); else map.set(s.id, [playlist]);

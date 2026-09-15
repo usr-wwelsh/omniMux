@@ -1,10 +1,12 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { errorMessage } from '$lib/errors';
-  import { subsonic, type Playlist, coverArtUrl } from '$lib/subsonic';
+  import { subsonic, type Playlist, type Song, coverArtUrl } from '$lib/subsonic';
   import { api } from '$lib/api';
   import { isGuest } from '$lib/auth';
   import { focusOnMount } from '$lib/focusOnMount';
+
+  type SortBy = 'name' | 'updated' | 'created' | 'tracks';
 
   let playlists = $state<Playlist[]>([]);
   let loading = $state(true);
@@ -15,6 +17,10 @@
   let creatingPlaylist = $state(false);
   let newPlaylistName = $state('');
   let createError = $state('');
+  let searchQuery = $state('');
+  let sortBy = $state<SortBy>('name');
+  let trackContents = $state<Map<string, Song[]> | null>(null);
+  let loadingTracks = $state(false);
 
   $effect(() => {
     subsonic.getPlaylists()
@@ -24,6 +30,52 @@
       })
       .catch(() => {})
       .finally(() => (loading = false));
+  });
+
+  // Track contents are only needed once someone searches, so fetch them lazily
+  // rather than pulling every playlist's songs on every page load.
+  let searchDebounce: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    const hasQuery = searchQuery.trim().length > 0;
+    clearTimeout(searchDebounce);
+    if (!hasQuery || trackContents || loadingTracks) return;
+    searchDebounce = setTimeout(() => {
+      loadingTracks = true;
+      subsonic.getPlaylistContents()
+        .then((m) => (trackContents = m))
+        .catch(() => {})
+        .finally(() => (loadingTracks = false));
+    }, 300);
+  });
+
+  function matchesSearch(pl: Playlist, needle: string): boolean {
+    if (pl.name.toLowerCase().includes(needle)) return true;
+    const songs = trackContents?.get(pl.id);
+    if (!songs) return false;
+    return songs.some(
+      (s) => s.title.toLowerCase().includes(needle) || s.artist.toLowerCase().includes(needle),
+    );
+  }
+
+  let visiblePlaylists = $derived.by(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const filtered = query ? playlists.filter((pl) => matchesSearch(pl, query)) : playlists;
+    const sorted = [...filtered];
+    switch (sortBy) {
+      case 'name':
+        sorted.sort((a, b) => a.name.localeCompare(b.name));
+        break;
+      case 'tracks':
+        sorted.sort((a, b) => b.songCount - a.songCount);
+        break;
+      case 'updated':
+        sorted.sort((a, b) => (b.changedAt ?? '').localeCompare(a.changedAt ?? ''));
+        break;
+      case 'created':
+        sorted.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+        break;
+    }
+    return sorted;
   });
 
   async function loadCoverArts(pls: Playlist[]) {
@@ -127,13 +179,38 @@
     <p class="sync-result">{syncResult}</p>
   {/if}
 
+  {#if !loading && playlists.length > 0}
+    <div class="filter-bar">
+      <input
+        class="search-input"
+        type="text"
+        placeholder="Search playlists and tracks..."
+        bind:value={searchQuery}
+      />
+      <label class="sort-group">
+        <span class="sort-label">Sort</span>
+        <select class="sort-select" bind:value={sortBy}>
+          <option value="name">Name</option>
+          <option value="updated">Recently updated</option>
+          <option value="created">Recently created</option>
+          <option value="tracks">Track count</option>
+        </select>
+      </label>
+      {#if loadingTracks}
+        <span class="status-text">Searching tracks...</span>
+      {/if}
+    </div>
+  {/if}
+
   {#if loading}
     <p class="status-text">Loading...</p>
   {:else if playlists.length === 0}
     <p class="status-text">No playlists yet. Import a YouTube playlist from the Downloads page to get started.</p>
+  {:else if visiblePlaylists.length === 0}
+    <p class="status-text">No playlists match "{searchQuery}".</p>
   {:else}
     <div class="playlist-grid">
-      {#each playlists as pl (pl.id)}
+      {#each visiblePlaylists as pl (pl.id)}
         <a href="/playlists/{pl.id}" class="playlist-card">
           <div class="playlist-art">
             {#if (coverArts.get(pl.id) ?? []).length > 0}
@@ -222,6 +299,56 @@
   .status-text {
     color: var(--text-secondary);
     font-size: 14px;
+  }
+
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .search-input {
+    flex: 1;
+    min-width: 0;
+    max-width: 360px;
+    padding: 8px 14px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border, rgba(255,255,255,0.1));
+    border-radius: 20px;
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+  }
+
+  .sort-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 4px 4px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border, rgba(255,255,255,0.1));
+    border-radius: 8px;
+  }
+
+  .sort-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-subdued, var(--text-secondary));
+    white-space: nowrap;
+  }
+
+  .sort-select {
+    padding: 6px 10px;
+    background: var(--bg-elevated);
+    border: none;
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
   }
 
   .playlist-grid {
