@@ -6,6 +6,13 @@
   import { focusOnMount } from '$lib/focusOnMount';
 
   type SortBy = 'name' | 'updated' | 'created' | 'tracks';
+  const SORT_OPTIONS: SortBy[] = ['name', 'updated', 'created', 'tracks'];
+  const SORT_STORAGE_KEY = 'omnimux-playlist-sort';
+
+  function loadStoredSort(): SortBy {
+    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(SORT_STORAGE_KEY) : null;
+    return SORT_OPTIONS.includes(stored as SortBy) ? (stored as SortBy) : 'name';
+  }
 
   let playlists = $state<Playlist[]>([]);
   let loading = $state(true);
@@ -14,9 +21,13 @@
   let newPlaylistName = $state('');
   let createError = $state('');
   let searchQuery = $state('');
-  let sortBy = $state<SortBy>('name');
+  let sortBy = $state<SortBy>(loadStoredSort());
   let trackContents = $state<Map<string, Song[]> | null>(null);
   let loadingTracks = $state(false);
+
+  $effect(() => {
+    localStorage.setItem(SORT_STORAGE_KEY, sortBy);
+  });
 
   $effect(() => {
     subsonic.getPlaylists()
