@@ -54,6 +54,8 @@ interface RawSong {
   genre?: string;
   bpm?: number;
   path?: string;
+  playCount?: number;
+  played?: string;
 }
 
 interface RawArtist {
@@ -178,6 +180,8 @@ export interface Song {
   genre?: string;
   bpm?: number;
   path?: string;
+  playCount: number;
+  played?: string;
 }
 
 export const SEARCH_SONG_PAGE_SIZE = 20;
@@ -195,6 +199,7 @@ function mapSong(s: RawSong): Song {
     album: s.album, albumId: s.albumId, coverArt: s.coverArt,
     duration: s.duration || 0, track: s.track, year: s.year, genre: s.genre,
     bpm: s.bpm || undefined, path: s.path,
+    playCount: s.playCount || 0, played: s.played,
   };
 }
 

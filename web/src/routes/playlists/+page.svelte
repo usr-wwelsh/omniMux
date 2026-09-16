@@ -5,8 +5,9 @@
   import { isGuest } from '$lib/auth';
   import { focusOnMount } from '$lib/focusOnMount';
 
-  type SortBy = 'name' | 'updated' | 'created' | 'tracks';
-  const SORT_OPTIONS: SortBy[] = ['name', 'updated', 'created', 'tracks'];
+  type SortBy = 'name' | 'updated' | 'created' | 'tracks' | 'mostPlayed' | 'recentlyPlayed';
+  const SORT_OPTIONS: SortBy[] = ['name', 'updated', 'created', 'tracks', 'mostPlayed', 'recentlyPlayed'];
+  const CONTENT_SORTS: SortBy[] = ['mostPlayed', 'recentlyPlayed'];
   const SORT_STORAGE_KEY = 'omnimux-playlist-sort';
 
   function loadStoredSort(): SortBy {
@@ -39,21 +40,36 @@
       .finally(() => (loading = false));
   });
 
-  // Track contents are only needed once someone searches, so fetch them lazily
-  // rather than pulling every playlist's songs on every page load.
+  // Track contents are only needed once someone searches or sorts by play data,
+  // so fetch them lazily rather than pulling every playlist's songs on every page load.
   let searchDebounce: ReturnType<typeof setTimeout> | undefined;
   $effect(() => {
     const hasQuery = searchQuery.trim().length > 0;
+    const needsContents = hasQuery || CONTENT_SORTS.includes(sortBy);
     clearTimeout(searchDebounce);
-    if (!hasQuery || trackContents || loadingTracks) return;
+    if (!needsContents || trackContents || loadingTracks) return;
     searchDebounce = setTimeout(() => {
       loadingTracks = true;
       subsonic.getPlaylistContents()
         .then((m) => (trackContents = m))
         .catch(() => {})
         .finally(() => (loadingTracks = false));
-    }, 300);
+    }, hasQuery ? 300 : 0);
   });
+
+  // Navidrome tracks play_count/played per song, not per playlist, so "most
+  // played" / "recently played" are aggregated from each playlist's songs.
+  function playStats(pl: Playlist): { count: number; lastPlayed: string } {
+    const songs = trackContents?.get(pl.id);
+    if (!songs) return { count: 0, lastPlayed: '' };
+    let count = 0;
+    let lastPlayed = '';
+    for (const s of songs) {
+      count += s.playCount;
+      if (s.played && s.played > lastPlayed) lastPlayed = s.played;
+    }
+    return { count, lastPlayed };
+  }
 
   function matchesSearch(pl: Playlist, needle: string): boolean {
     if (pl.name.toLowerCase().includes(needle)) return true;
@@ -80,6 +96,12 @@
         break;
       case 'created':
         sorted.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+        break;
+      case 'mostPlayed':
+        sorted.sort((a, b) => playStats(b).count - playStats(a).count);
+        break;
+      case 'recentlyPlayed':
+        sorted.sort((a, b) => playStats(b).lastPlayed.localeCompare(playStats(a).lastPlayed));
         break;
     }
     return sorted;
@@ -157,10 +179,12 @@
           <option value="updated">Recently updated</option>
           <option value="created">Recently created</option>
           <option value="tracks">Track count</option>
+          <option value="mostPlayed">Most played</option>
+          <option value="recentlyPlayed">Recently played</option>
         </select>
       </label>
       {#if loadingTracks}
-        <span class="status-text">Searching tracks...</span>
+        <span class="status-text">Loading track data...</span>
       {/if}
     </div>
   {/if}
