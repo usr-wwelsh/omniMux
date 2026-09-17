@@ -9,10 +9,16 @@
   const SORT_OPTIONS: SortBy[] = ['name', 'updated', 'created', 'tracks', 'mostPlayed', 'recentlyPlayed'];
   const CONTENT_SORTS: SortBy[] = ['mostPlayed', 'recentlyPlayed'];
   const SORT_STORAGE_KEY = 'omnimux-playlist-sort';
+  const HIDE_MOOD_STORAGE_KEY = 'omnimux-playlist-hide-mood';
+  const MOOD_PREFIX = 'Mood: ';
 
   function loadStoredSort(): SortBy {
     const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(SORT_STORAGE_KEY) : null;
     return SORT_OPTIONS.includes(stored as SortBy) ? (stored as SortBy) : 'name';
+  }
+
+  function loadStoredHideMood(): boolean {
+    return typeof localStorage !== 'undefined' && localStorage.getItem(HIDE_MOOD_STORAGE_KEY) === 'true';
   }
 
   let playlists = $state<Playlist[]>([]);
@@ -23,11 +29,16 @@
   let createError = $state('');
   let searchQuery = $state('');
   let sortBy = $state<SortBy>(loadStoredSort());
+  let hideMoodPlaylists = $state(loadStoredHideMood());
   let trackContents = $state<Map<string, Song[]> | null>(null);
   let loadingTracks = $state(false);
 
   $effect(() => {
     localStorage.setItem(SORT_STORAGE_KEY, sortBy);
+  });
+
+  $effect(() => {
+    localStorage.setItem(HIDE_MOOD_STORAGE_KEY, String(hideMoodPlaylists));
   });
 
   $effect(() => {
@@ -81,8 +92,9 @@
   }
 
   let visiblePlaylists = $derived.by(() => {
+    const base = hideMoodPlaylists ? playlists.filter((pl) => !pl.name.startsWith(MOOD_PREFIX)) : playlists;
     const query = searchQuery.trim().toLowerCase();
-    const filtered = query ? playlists.filter((pl) => matchesSearch(pl, query)) : playlists;
+    const filtered = query ? base.filter((pl) => matchesSearch(pl, query)) : base;
     const sorted = [...filtered];
     switch (sortBy) {
       case 'name':
@@ -182,6 +194,10 @@
           <option value="mostPlayed">Most played</option>
           <option value="recentlyPlayed">Recently played</option>
         </select>
+      </label>
+      <label class="mood-toggle">
+        <input type="checkbox" bind:checked={hideMoodPlaylists} />
+        Hide mood playlists
       </label>
       {#if loadingTracks}
         <span class="status-text">Loading track data...</span>
@@ -335,6 +351,20 @@
     color: var(--text-primary);
     font-size: 13px;
     outline: none;
+    cursor: pointer;
+  }
+
+  .mood-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .mood-toggle input {
     cursor: pointer;
   }
 
