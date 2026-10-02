@@ -5,6 +5,7 @@
   import { isGuest } from '$lib/auth';
   import { invalidateLibrary } from '$lib/stores/libraryCache';
   import TrackList from '../../../../components/TrackList.svelte';
+  import RelatedAlbums from '../../../../components/RelatedAlbums.svelte';
 
   // --- merge modal state ---
   let mergeOpen = $state(false);
@@ -576,6 +577,8 @@
       </div>
     {/if}
     {/if}
+
+    <RelatedAlbums {album} />
   {/if}
 </div>
 
