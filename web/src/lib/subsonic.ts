@@ -37,6 +37,7 @@ interface RawAlbum {
   songCount?: number;
   year?: number;
   genre?: string;
+  genres?: { name: string }[];
   song?: RawSong[];
 }
 
@@ -164,6 +165,7 @@ export interface Album {
   songCount: number;
   year?: number;
   genre?: string;
+  genres?: string[];
 }
 
 export interface Song {
@@ -190,6 +192,7 @@ function mapAlbum(al: RawAlbum): Album {
   return {
     id: al.id, name: al.name, artist: al.artist, artistId: al.artistId,
     coverArt: al.coverArt, songCount: al.songCount || 0, year: al.year, genre: al.genre,
+    genres: al.genres?.length ? al.genres.map((g) => g.name) : al.genre ? [al.genre] : [],
   };
 }
 
