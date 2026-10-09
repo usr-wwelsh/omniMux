@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import type { DiscoverResult } from './api';
 import { recallDiscover, rememberDiscover, clearDiscover, DISCOVER_TTL_MS } from './discoverCache';
 
-const track = { artist: 'a', title: 't', score: 1 } as any;
+const track: DiscoverResult = { artist: 'a', title: 't', image_url: '', score: 1, seed_artist: 's' };
 
 beforeEach(clearDiscover);
 
