@@ -3,6 +3,7 @@
   import { errorMessage } from '$lib/errors';
   import { goto } from '$app/navigation';
   import { isGuest } from '$lib/auth';
+  import { progressAt, stageFor, scrambleFrame, nextWord, LOADER_WORDS } from '$lib/discoverLoader';
 
   $effect(() => {
     if ($isGuest) goto('/');
@@ -12,6 +13,38 @@
   let images = $state<Map<string, string>>(new Map());
   let loading = $state(true);
   let error = $state<string | null>(null);
+
+  const HOLD_FRAMES = 14;
+  let loaderWord = $state(LOADER_WORDS[0]);
+  let loaderFrame = $state(0);
+  let loaderProgress = $state(0);
+
+  $effect(() => {
+    if (!loading) return;
+    let word = LOADER_WORDS[0];
+    let frame = 0;
+    const t0 = performance.now();
+    loaderProgress = 0;
+    const scramble = setInterval(() => {
+      frame++;
+      if (frame > word.length * 2 + HOLD_FRAMES) {
+        word = nextWord(word, Math.random);
+        frame = 0;
+      }
+      loaderWord = word;
+      loaderFrame = frame;
+    }, 60);
+    let raf = requestAnimationFrame(function tick() {
+      loaderProgress = progressAt(performance.now() - t0);
+      raf = requestAnimationFrame(tick);
+    });
+    return () => {
+      clearInterval(scramble);
+      cancelAnimationFrame(raf);
+    };
+  });
+
+  const scrambled = $derived(scrambleFrame(loaderWord, loaderFrame, Math.random));
 
   const pendingKeys = new Set<string>();
   let queue: Array<{artist: string; title: string}> = [];
@@ -140,6 +173,13 @@
   </div>
 
   {#if loading}
+    <div class="loader" role="progressbar" aria-label="Loading suggestions" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.floor(loaderProgress)}>
+      <div class="loader-word" aria-hidden="true">
+        {#each [...scrambled.text] as ch, i (i)}<span class:loader-done={i < scrambled.revealed}>{ch}</span>{/each}
+      </div>
+      <div class="loader-bar"><div class="loader-fill" style:width="{loaderProgress}%"></div></div>
+      <p class="loader-stage">{stageFor(loaderProgress)}</p>
+    </div>
     <div class="featured-row featured-row--skeleton">
       {#each Array(5) as _, i (i)}
         <div class="featured-card featured-card--skeleton">
@@ -624,6 +664,54 @@
     height: 140px;
     border: none;
     display: block;
+  }
+
+  /* ── Loader ── */
+
+  .loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 0 28px;
+  }
+
+  .loader-word {
+    font-family: ui-monospace, monospace;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    min-height: 1.3em;
+    white-space: pre;
+  }
+
+  .loader-word span {
+    color: var(--accent);
+  }
+
+  .loader-word .loader-done {
+    color: var(--text-primary);
+  }
+
+  .loader-bar {
+    width: min(360px, 80%);
+    height: 6px;
+    border-radius: 3px;
+    background: var(--bg-elevated);
+    overflow: hidden;
+  }
+
+  .loader-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--accent);
+  }
+
+  .loader-stage {
+    margin: 0;
+    min-height: 1.2em;
+    font-size: 13px;
+    color: var(--text-secondary);
   }
 
   /* ── Skeletons ── */
