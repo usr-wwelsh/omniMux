@@ -3,15 +3,18 @@
   import { errorMessage } from '$lib/errors';
   import { goto } from '$app/navigation';
   import { isGuest } from '$lib/auth';
+  import { recallDiscover, rememberDiscover } from '$lib/discoverCache';
   import { progressAt, stageFor, scrambleFrame, nextWord, LOADER_WORDS } from '$lib/discoverLoader';
 
   $effect(() => {
     if ($isGuest) goto('/');
   });
 
-  let suggestions = $state<DiscoverResult[]>([]);
-  let images = $state<Map<string, string>>(new Map());
-  let loading = $state(true);
+  const cached = recallDiscover();
+  let loadedAt = cached?.at ?? Date.now();
+  let suggestions = $state<DiscoverResult[]>(cached?.suggestions ?? []);
+  let images = $state<Map<string, string>>(cached?.images ?? new Map());
+  let loading = $state(!cached);
   let error = $state<string | null>(null);
 
   const HOLD_FRAMES = 14;
@@ -75,6 +78,7 @@
         if (r.image_url) next.set(tkey(r.artist, r.title), r.image_url);
       }
       images = next;
+      rememberDiscover(suggestions, next, loadedAt);
     } catch {}
     if (queue.length) flushTimer = setTimeout(flushQueue, 100);
   }
@@ -125,6 +129,8 @@
       images = new Map();
       pendingKeys.clear();
       queue.length = 0;
+      loadedAt = Date.now();
+      rememberDiscover(suggestions, images, loadedAt);
     } catch (e) {
       error = errorMessage(e);
     } finally {
@@ -132,7 +138,7 @@
     }
   }
 
-  load();
+  if (!cached) load();
 
   function search(track: DiscoverResult) {
     goto(`/search?q=${encodeURIComponent(`${track.artist} ${track.title}`)}`);
