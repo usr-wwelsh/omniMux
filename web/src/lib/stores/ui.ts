@@ -20,3 +20,12 @@ nowPlayingCollapsed.subscribe((value) => {
     localStorage.setItem('omnimux_nowplaying_collapsed', JSON.stringify(value));
   }
 });
+
+const storedSidebar = typeof localStorage !== 'undefined' ? localStorage.getItem('omnimux_sidebar_collapsed') : null;
+export const sidebarCollapsed = writable<boolean>(storedSidebar === 'true');
+
+sidebarCollapsed.subscribe((value) => {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('omnimux_sidebar_collapsed', String(value));
+  }
+});
