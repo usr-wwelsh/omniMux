@@ -149,6 +149,7 @@ class QueueTrack(BaseModel):
     duration: float = 0
     streamUrl: str | None = None
     coverUrl: str | None = None
+    bpm: float | None = None
 
 
 class QueueState(BaseModel):
