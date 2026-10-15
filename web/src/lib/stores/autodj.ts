@@ -6,7 +6,7 @@ import {
   queue, queueIndex, currentTrack, loop, isPlaying,
   songToTrack, addToQueue, jumpToQueue, getAudio,
   startCrossfade, stopCrossfade, registerCrossfadeChecker, preloadCrossfadeTrack, warmUpCrossfadeAudio,
-  suppressQueuePollApply,
+  suppressQueuePollApply, tempoTarget,
 } from './player';
 import { visMode, type VisMode, startAutoGain, stopAutoGain, freezeAutoGain, thawAutoGain, getRawAnalyser, fillFrequencyData, overallFromBuf } from './visualizer';
 import { showFullscreenPlayer, artExpandRequested, autoDJToast, artModeActive } from './ui';
@@ -32,6 +32,7 @@ function persistedWritable<T>(key: string, defaultVal: T, parse: (v: string) => 
 export const crossfadeDuration  = persistedWritable('omnimux-cf-dur',   5,       Number);
 export const beatmatchEnabled   = persistedWritable('omnimux-cf-beat',  true,    (v) => v === 'true');
 export const bpmTolerance       = persistedWritable('omnimux-bpm-tol',  10,      Number);
+export const targetBpm          = persistedWritable('omnimux-target-bpm', 0,       Number);
 export const visCycleInterval   = persistedWritable<'track'|'15'|'30'|'60'>('omnimux-vis-cycle', 'track', (v) => v as 'track'|'15'|'30'|'60');
 export const ambientIdleMinutes = persistedWritable('omnimux-ambient',  0,       Number);
 
@@ -47,6 +48,13 @@ export const djPersonality = persistedWritable<DJPersonality>('omnimux-dj-person
 // ── Runtime state ─────────────────────────────────────────────────────────────
 
 export const autoDJActive = writable<boolean>(false);
+
+function syncTempoTarget() {
+  const bpm = get(targetBpm);
+  tempoTarget.set(get(autoDJActive) && bpm > 0 ? bpm : null);
+}
+targetBpm.subscribe(syncTempoTarget);
+autoDJActive.subscribe(syncTempoTarget);
 
 // ── Enrichment cache and energy arc ──────────────────────────────────────────
 
@@ -167,7 +175,8 @@ function crossfadeCheck(ct: number, dur: number) {
   // Energy-drop early exit (Club/Workout personalities)
   _sampleEnergy(ct);
 
-  const remaining = dur - ct;
+  const rate = getAudio().playbackRate || 1;
+  const remaining = (dur - ct) / rate;
   const q = get(queue);
   const idx = get(queueIndex);
   if (idx >= q.length - 1) {
@@ -183,7 +192,7 @@ function crossfadeCheck(ct: number, dur: number) {
   // Use _currentTrackSkipOffset (the offset actually applied when this track started)
   // rather than recalculating — the first track and manually-played tracks start at 0.
   const maxPlay = config.maxPlaySeconds;
-  if (maxPlay !== null && ct >= _currentTrackSkipOffset + maxPlay && remaining > cfSecs && !_crossfadeCheckActive) {
+  if (maxPlay !== null && ct >= _currentTrackSkipOffset + maxPlay * rate && remaining > cfSecs && !_crossfadeCheckActive) {
     _crossfadeCheckActive = true;
     const skipSecsMax = resolveSkipIntro(config, nextTrack);
     _pendingSkipOffset = skipSecsMax;

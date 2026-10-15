@@ -312,3 +312,14 @@ export function selectNextTrack(rawPool: Song[], ctx: SelectionContext): Selecti
   const pick = scored[Math.floor(Math.random() * Math.min(5, scored.length))];
   return { candidate: pick.s, meta: pick.meta, diagnostics };
 }
+
+const RATE_FOLD_MIN = 0.6;
+const RATE_FOLD_MAX = 1.8;
+
+export function rateFor(trackBpm: number | null | undefined, targetBpm: number | null): number {
+  if (!targetBpm || !trackBpm || !Number.isFinite(trackBpm) || trackBpm <= 0) return 1;
+  let rate = targetBpm / trackBpm;
+  while (rate > RATE_FOLD_MAX) rate /= 2;
+  while (rate < RATE_FOLD_MIN) rate *= 2;
+  return rate;
+}

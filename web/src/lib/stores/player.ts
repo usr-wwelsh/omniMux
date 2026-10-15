@@ -6,6 +6,7 @@ import {
   backoffDelay, advancedPast, STALL_PROGRESS_SECONDS, HEALTHY_PLAYBACK_SECONDS,
   RECOVERY_TIMEOUT_MS,
 } from '../playbackRecovery';
+import { rateFor } from './autodjEngine';
 import { loadSession, saveSession, resumePlan, type ResumePlan } from '../playbackSession';
 
 export interface DJMeta {
@@ -45,6 +46,15 @@ export const volume = writable(
 );
 volume.subscribe((v) => {
   if (typeof localStorage !== 'undefined') localStorage.setItem('omnimux-volume', String(v));
+});
+
+export const tempoTarget = writable<number | null>(null);
+
+export const keylock = writable(
+  typeof localStorage !== 'undefined' && localStorage.getItem('omnimux-keylock') === 'true'
+);
+keylock.subscribe((v) => {
+  if (typeof localStorage !== 'undefined') localStorage.setItem('omnimux-keylock', String(v));
 });
 
 export const shuffle = writable(
@@ -856,7 +866,7 @@ export function preloadCrossfadeTrack(track: Track, seekOffset = 0) {
   if (cf.src === track.streamUrl) return; // already loaded
   cf.src = track.streamUrl;
   cf.volume = 0;
-  cf.playbackRate = 1.0;
+  setElementRate(cf, 1.0);
   cf.play()
     .then(() => {
       if (seekOffset > 0) cf.currentTime = seekOffset;
@@ -939,20 +949,26 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
   // pitchSlop adds a tiny drift so the blend sounds like a human DJ.
   const currentBpm = get(currentTrack)?.bpm;
   const nextBpm = nextTrack.bpm;
-  let rawRate = (doBeatmatch && currentBpm && nextBpm && nextBpm > 0)
-    ? currentBpm / nextBpm
-    : 1.0;
+  const target = get(tempoTarget);
+  const tempoLocked = target !== null;
+  const beatLocked = tempoLocked || doBeatmatch;
+  let rawRate = tempoLocked
+    ? rateFor(nextBpm, target)
+    : (doBeatmatch && currentBpm && nextBpm && nextBpm > 0)
+      ? currentBpm / nextBpm
+      : 1.0;
   // Normalize half/double-time BPM tag errors: clamp to ±25% of 1.0.
   // Outside that range the metadata is almost certainly wrong octave.
-  if (doBeatmatch && currentBpm && nextBpm) {
+  if (!tempoLocked && doBeatmatch && currentBpm && nextBpm) {
     while (rawRate > 1.25) rawRate /= 2;
     while (rawRate < 0.8)  rawRate *= 2;
   }
+  const endRate = tempoLocked ? rawRate : 1.0;
   let startPlaybackRate = rawRate;
-  if (doBeatmatch && pitchSlop > 0) {
+  if (beatLocked && pitchSlop > 0) {
     startPlaybackRate *= 1 + (Math.random() - 0.5) * pitchSlop * 2;
   }
-  cf.playbackRate = startPlaybackRate;
+  setElementRate(cf, startPlaybackRate);
 
   function beginFade() {
     // Seek cf to skip-intro offset if not already there
@@ -964,14 +980,14 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
     // primary's next beat. Both tracks now share the same real-time beat period
     // (because cf's rate = currentBpm/nextBpm), so aligning phase once at fade
     // start locks them together. pitchSlop then lets them drift naturally.
-    if (doBeatmatch && currentBpm && nextBpm && nextBpm > 0) {
+    if (beatLocked && currentBpm && nextBpm && nextBpm > 0) {
       const primary = getAudio();
       const primaryBeatPeriod = 60 / currentBpm;       // seconds per beat on primary
       const cfBeatPeriod      = 60 / nextBpm;          // seconds per beat in cf's own time
       const primaryPhase      = primary.currentTime % primaryBeatPeriod; // how far into current beat
       // Where in cf's beat cycle we need to be so the next beat lines up in real time:
-      // primaryPhase (real-time) → multiply by rate to get cf-time equivalent
-      const targetCfPhase = primaryPhase * rawRate;
+      // primaryPhase (track-time) → real time via primary's rate → cf-time via cf's rate
+      const targetCfPhase = (primaryPhase / primary.playbackRate) * rawRate;
       const currentCfPhase    = cf.currentTime % cfBeatPeriod;
       const aligned = cf.currentTime - currentCfPhase + targetCfPhase;
       // Don't seek before the skip-intro offset; add one beat period if needed
@@ -994,7 +1010,7 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
       const RELEASE_POINT = 0.65;
       const releaseT = Math.max(0, (t - RELEASE_POINT) / (1 - RELEASE_POINT));
       const releaseEased = releaseT * releaseT * (3 - 2 * releaseT);
-      cf.playbackRate = startPlaybackRate + (1.0 - startPlaybackRate) * releaseEased;
+      cf.playbackRate = startPlaybackRate + (endRate - startPlaybackRate) * releaseEased;
 
       if (t < 1) {
         _crossfadeTimerId = setTimeout(() => fade(performance.now()), 16);
@@ -1009,14 +1025,14 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
           // Sync to wherever cf is right now, then hand off
           const syncTime = cf.currentTime;
           primary.currentTime = syncTime;
-          primary.playbackRate = 1.0;
+          setElementRate(primary, rateFor(nextTrack.bpm, get(tempoTarget)));
           primary.volume = get(volume);
           primary.play()
             .then(() => {
               cf.pause();
               cf.src = '';
               cf.volume = 0;
-              cf.playbackRate = 1.0;
+              setElementRate(cf, 1.0);
               _isCrossfading = false;
               _crossfadeTimerId = null;
               // Issue 10: set blackout window and push immediately so server has the
@@ -1094,11 +1110,26 @@ export function stopCrossfade() {
     crossfadeAudio.pause();
     crossfadeAudio.src = '';
     crossfadeAudio.volume = 0;
-    crossfadeAudio.playbackRate = 1.0;
+    setElementRate(crossfadeAudio, 1.0);
   }
   _isCrossfading = false;
   if (audio) {
     audio.volume = get(volume);
-    audio.playbackRate = 1.0;
+    applyTempo();
   }
 }
+
+function setElementRate(el: HTMLAudioElement, rate: number) {
+  el.preservesPitch = get(keylock) || get(tempoTarget) === null;
+  el.defaultPlaybackRate = rate;
+  el.playbackRate = rate;
+}
+
+function applyTempo() {
+  if (!audio || _isCrossfading) return;
+  setElementRate(audio, rateFor(get(currentTrack)?.bpm, get(tempoTarget)));
+}
+
+tempoTarget.subscribe(applyTempo);
+keylock.subscribe(applyTempo);
+currentTrack.subscribe(applyTempo);
