@@ -27,7 +27,8 @@ docker compose up -d
 That generates a token, writes `/etc/omnimux/updater.env` and
 `/etc/systemd/system/omnimux-updater.service`, sets `UPDATER_TOKEN` in the
 repo's `.env` (creating it from `.env.example` first if you don't have one
-yet — everything else already in `.env`, like `JWT_SECRET`, is left alone),
+yet), generates `JWT_SECRET` if it's unset or still a placeholder (a real
+value is never touched, nor is anything else already in `.env`),
 and starts the service. `docker-compose.yml` itself is never edited, by the
 script or by you — see below.
 

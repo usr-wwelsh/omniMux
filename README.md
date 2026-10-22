@@ -131,6 +131,8 @@ docker compose up -d --build
 | API | http://localhost:8800 |
 | Navidrome | http://localhost:4533 |
 
+The stack speaks plain HTTP, so anything beyond localhost or a trusted LAN must sit behind a TLS-terminating reverse proxy (Caddy, Traefik, Cloudflare Tunnel) pointed at `:8801`. Over HTTPS the login cookie is marked `Secure` automatically; set `OMNIMUX_COOKIE_SECURE=true` to force it. Don't expose `:8800` or `:4533` directly.
+
 On first run, open Navidrome at `:4533`, create an admin account, then log into the omniMux web app with those same credentials.
 
 **Optional — auto-update:** the web UI can show a changelog banner with a one-click update button once you opt in:
@@ -156,7 +158,7 @@ so a `git pull` never conflicts with values you've set locally:
 | `NAVIDROME_URL` | `docker-compose.yml` | `http://navidrome:4533` | Internal URL of the Navidrome service |
 | `MUSIC_DIR` | `docker-compose.yml` | `/music` | Where downloaded audio files are stored |
 | `DATA_DIR` | `docker-compose.yml` | `/data` | Where the SQLite database is stored |
-| `JWT_SECRET` | `.env` | `change-me-in-production` | Secret used to sign auth tokens — **change this** |
+| `JWT_SECRET` | `.env` | *(required)* | Signs and encrypts auth tokens — the API refuses to start if it's unset or a placeholder |
 | `UPDATER_TOKEN` | `.env` | *(blank)* | Auth for the opt-in auto-update helper (see Quick start above) — set for you by `deploy/install.sh` |
 
 </details>

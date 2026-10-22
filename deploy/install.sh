@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Installs the opt-in host-side auto-update helper: generates a token, wires
 # up the systemd service, and sets UPDATER_TOKEN in the repo's .env (creating
-# it from .env.example if it doesn't exist yet). Everything else already in
-# .env — JWT_SECRET, anything else you've set — is left untouched. See
+# it from .env.example if it doesn't exist yet) and generates JWT_SECRET only
+# if it is unset or a placeholder. Everything else already in .env is left
+# untouched. See
 # deploy/README.md for what this does and why, and for how to undo it.
 set -euo pipefail
 
@@ -67,8 +68,15 @@ echo "Wrote $UNIT_FILE"
 
 if [[ ! -f "$REPO_ENV_FILE" ]]; then
   cp "$REPO_DIR/.env.example" "$REPO_ENV_FILE"
-  echo "Created $REPO_ENV_FILE from .env.example — edit JWT_SECRET in it before going further"
+  echo "Created $REPO_ENV_FILE from .env.example"
 fi
+CURRENT_JWT_SECRET="$(grep -oP '(?<=^JWT_SECRET=).*' "$REPO_ENV_FILE" || true)"
+case "$CURRENT_JWT_SECRET" in
+  ""|change-me-in-production|omnimux-dev-secret)
+    set_env_var "$REPO_ENV_FILE" "JWT_SECRET" "$(openssl rand -hex 32)"
+    echo "Generated JWT_SECRET in $REPO_ENV_FILE (it was unset or a placeholder)"
+    ;;
+esac
 set_env_var "$REPO_ENV_FILE" "UPDATER_TOKEN" "$TOKEN"
 chown "$RUN_AS_USER" "$REPO_ENV_FILE"
 chmod 600 "$REPO_ENV_FILE"

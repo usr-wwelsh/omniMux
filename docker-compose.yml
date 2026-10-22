@@ -35,7 +35,7 @@ services:
       # Both read from .env (gitignored, copy from .env.example) — never
       # edit the values in this tracked file directly, or a future `git
       # pull` will conflict with your own secrets.
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env (openssl rand -hex 32)}
       UPDATER_TOKEN: ${UPDATER_TOKEN:-}
       MALLOC_ARENA_MAX: 2
       MALLOC_TRIM_THRESHOLD_: 131072
