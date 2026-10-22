@@ -1,6 +1,6 @@
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,7 +36,7 @@ async def guest_status(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/guest/login", response_model=GuestLoginResponse)
-async def guest_login(response: Response, db: AsyncSession = Depends(get_db)):
+async def guest_login(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     enabled_row = await db.get(SystemConfig, "guest_enabled")
     if not enabled_row or enabled_row.value != "true":
         raise HTTPException(status_code=403, detail="Guest access is not enabled")
@@ -50,7 +50,7 @@ async def guest_login(response: Response, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Guest account credentials are invalid")
 
     token = _create_token(GUEST_USERNAME, pwd_row.value, role="guest")
-    set_token_cookie(response, token)
+    set_token_cookie(request, response, token)
     return GuestLoginResponse(token=token, username=GUEST_USERNAME, role="guest")
 
 
