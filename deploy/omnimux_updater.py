@@ -236,14 +236,22 @@ def build_server(service: UpdaterService, socket_path: str) -> ThreadingUnixHTTP
     return server
 
 
+PLACEHOLDER_TOKENS = {"change-me"}
+
+
+def load_token(raw: str | None) -> str:
+    token = (raw or "").strip()
+    if not token or token in PLACEHOLDER_TOKENS:
+        raise SystemExit("OMNIMUX_UPDATER_TOKEN is unset or a placeholder — refusing to start unauthenticated")
+    return token
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s omnimux-updater %(message)s")
 
     repo_dir = Path(os.environ.get("OMNIMUX_REPO_DIR", Path(__file__).resolve().parent.parent))
     socket_path = os.environ.get("OMNIMUX_UPDATER_SOCKET", "/run/omnimux-updater/updater.sock")
-    token = os.environ.get("OMNIMUX_UPDATER_TOKEN")
-    if not token:
-        raise SystemExit("OMNIMUX_UPDATER_TOKEN must be set — refusing to start unauthenticated")
+    token = load_token(os.environ.get("OMNIMUX_UPDATER_TOKEN"))
 
     compose_file = repo_dir / "docker-compose.yml"
     service = UpdaterService(repo_dir=repo_dir, compose_file=compose_file, token=token)

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from omnimux_updater import CommandResult, UpdaterService, parse_commit_log
+from omnimux_updater import CommandResult, UpdaterService, load_token, parse_commit_log
 
 
 def test_parse_commit_log_empty_string_returns_no_commits():
@@ -206,3 +206,13 @@ def test_run_update_stops_on_docker_build_failure():
     progress = service.get_progress()
     assert progress["phase"] == "error"
     assert "no space left on device" in progress["error"]
+
+
+@pytest.mark.parametrize("raw", [None, "", "   ", "change-me"])
+def test_load_token_refuses_unset_or_placeholder(raw):
+    with pytest.raises(SystemExit):
+        load_token(raw)
+
+
+def test_load_token_returns_stripped_value():
+    assert load_token("  abc123  ") == "abc123"
