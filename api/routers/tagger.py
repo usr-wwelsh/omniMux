@@ -90,7 +90,7 @@ async def get_tracks(
 @router.post("/tagger/flags")
 async def set_track_flags(
     body: FlagRequest,
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_non_guest),
     session: AsyncSession = Depends(get_db),
 ):
     """Set ignore_in_autodj flag for given file paths."""
@@ -145,7 +145,7 @@ class RetagRequest(BaseModel):
 @router.post("/tagger/retag")
 async def retag_tracks(
     body: RetagRequest,
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_non_guest),
     session: AsyncSession = Depends(get_db),
 ):
     """Retag files, deciding the album once per album rather than once per file.
@@ -341,7 +341,7 @@ async def _resolve_batch_albums(
 @router.post("/tagger/tags")
 async def write_tags(
     body: TagWriteRequest,
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_non_guest),
     session: AsyncSession = Depends(get_db),
 ):
     await _save_snapshot(session, body.file_paths)
@@ -373,7 +373,7 @@ class RestoreRequest(BaseModel):
 @router.post("/tagger/restore")
 async def restore_tags(
     body: RestoreRequest,
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_non_guest),
     session: AsyncSession = Depends(get_db),
 ):
     restored = 0
@@ -422,7 +422,7 @@ class MergeAlbumsRequest(BaseModel):
 @router.post("/tagger/merge-albums")
 async def merge_albums(
     body: MergeAlbumsRequest,
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_non_guest),
 ):
     all_tracks = await asyncio.to_thread(tagger.list_tracks)
     source_keys: set[tuple[str, str]] = set()
@@ -572,7 +572,7 @@ async def reorder_album(
 @router.post("/tagger/delete")
 async def delete_tracks(
     body: DeleteRequest,
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_non_guest),
 ):
     deleted, errors = tagger.delete_tracks(body.file_paths)
     try:

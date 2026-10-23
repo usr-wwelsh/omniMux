@@ -161,7 +161,7 @@ async def start_download(
 @router.post("/download/{download_id}/cancel")
 async def cancel_download(
     download_id: int,
-    user: UserContext = Depends(get_current_user),
+    user: UserContext = Depends(require_non_guest),
     db=Depends(get_db),
 ):
     dl = await db.get(Download, download_id)
