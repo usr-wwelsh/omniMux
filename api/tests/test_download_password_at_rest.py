@@ -3,7 +3,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from db import secretbox
-from db.database import Base, encrypt_legacy_passwords
+from db.database import Base, clear_finished_passwords, encrypt_legacy_passwords
 from db.models import Download
 
 
@@ -103,3 +103,21 @@ def test_value_encrypted_under_another_secret_reads_as_none(monkeypatch):
 
     assert secretbox.decrypt(stored) is None
     secretbox._fernet.cache_clear()
+
+
+@pytest.mark.parametrize("status,expected_kept", [
+    ("completed", False), ("failed", False), ("cancelled", False),
+    ("queued", True), ("downloading", True),
+])
+async def test_clear_finished_passwords_only_touches_finished_rows(engine, status, expected_kept):
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    async with sessions() as s:
+        dl = _download("hunter2")
+        dl.status = status
+        s.add(dl)
+        await s.commit()
+
+    async with engine.begin() as conn:
+        await clear_finished_passwords(conn)
+
+    assert (await _raw_password(engine, 1) is not None) == expected_kept

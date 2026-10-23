@@ -27,7 +27,12 @@ def _sanitize(name: str) -> str:
     return name.strip().rstrip(".")[:200]
 
 
+_FINISHED_STATUSES = frozenset({"completed", "failed", "cancelled"})
+
+
 async def _update_download(download_id: int, **kwargs) -> None:
+    if kwargs.get("status") in _FINISHED_STATUSES:
+        kwargs["navidrome_password"] = None
     async with async_session() as session:
         dl = await session.get(Download, download_id)
         if dl:

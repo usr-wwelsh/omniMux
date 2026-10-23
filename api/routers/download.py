@@ -170,6 +170,7 @@ async def cancel_download(
     if dl.status not in ("queued", "downloading", "analyzing", "tagging", "scanning"):
         raise HTTPException(status_code=400, detail="Download is not active")
     dl.status = "cancelled"
+    dl.navidrome_password = None
     await db.commit()
     return {"ok": True}
 

@@ -32,6 +32,13 @@ async def encrypt_legacy_passwords(conn) -> None:
         )
 
 
+async def clear_finished_passwords(conn) -> None:
+    await conn.execute(text(
+        "UPDATE downloads SET navidrome_password = NULL"
+        " WHERE status IN ('completed', 'failed', 'cancelled') AND navidrome_password IS NOT NULL"
+    ))
+
+
 async def init_db():
     from db.models import Download, TrackMapping, UserSettings, TrackFlags, SystemConfig, KnownDevice  # noqa: F401
 
@@ -51,6 +58,7 @@ async def init_db():
                 await conn.execute(text(migration))
             except Exception:
                 pass
+        await clear_finished_passwords(conn)
         await encrypt_legacy_passwords(conn)
 
 
