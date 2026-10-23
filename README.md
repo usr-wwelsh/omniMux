@@ -128,7 +128,7 @@ docker compose up -d --build
 | Service | URL |
 |---|---|
 | Web app | http://localhost:8801 |
-| API | http://localhost:8800 |
+| API | http://localhost:8800 (loopback only) |
 | Navidrome | http://localhost:4533 |
 
 The stack speaks plain HTTP, so anything beyond localhost or a trusted LAN must sit behind a TLS-terminating reverse proxy (Caddy, Traefik, Cloudflare Tunnel) pointed at `:8801`. Over HTTPS the login cookie is marked `Secure` automatically; set `OMNIMUX_COOKIE_SECURE=true` to force it. Don't expose `:8800` or `:4533` directly.

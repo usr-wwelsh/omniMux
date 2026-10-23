@@ -19,7 +19,7 @@ services:
   omnimux-api:
     build: ./api
     ports:
-      - "8800:8800"
+      - "127.0.0.1:8800:8800"
     volumes:
       - ./data/music:/music
       - ./data/omnimux:/data
