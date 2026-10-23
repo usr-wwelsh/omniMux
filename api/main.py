@@ -42,11 +42,16 @@ async def lifespan(app: FastAPI):
     await library.close_shared_client()
 
 
+def load_cors_origins(raw: str | None) -> list[str]:
+    origins = [o.strip() for o in (raw or "").split(",")]
+    return [o for o in origins if o and o != "*"]
+
+
 app = FastAPI(title="omniMux API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=load_cors_origins(os.environ.get("OMNIMUX_CORS_ORIGINS")),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
