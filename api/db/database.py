@@ -3,6 +3,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 
+from db import secretbox
+
 DATA_DIR = os.environ.get("DATA_DIR", "./data")
 DATABASE_URL = f"sqlite+aiosqlite:///{DATA_DIR}/omnimux.db"
 
@@ -16,6 +18,18 @@ async_session = async_sessionmaker(engine, expire_on_commit=False)
 
 class Base(DeclarativeBase):
     pass
+
+
+async def encrypt_legacy_passwords(conn) -> None:
+    rows = (await conn.execute(text(
+        "SELECT id, navidrome_password FROM downloads"
+        " WHERE navidrome_password IS NOT NULL AND navidrome_password NOT LIKE :prefix"
+    ), {"prefix": secretbox.PREFIX + "%"})).all()
+    for row_id, password in rows:
+        await conn.execute(
+            text("UPDATE downloads SET navidrome_password = :p WHERE id = :i"),
+            {"p": secretbox.encrypt(password), "i": row_id},
+        )
 
 
 async def init_db():
@@ -37,6 +51,7 @@ async def init_db():
                 await conn.execute(text(migration))
             except Exception:
                 pass
+        await encrypt_legacy_passwords(conn)
 
 
 async def get_db() -> AsyncSession:

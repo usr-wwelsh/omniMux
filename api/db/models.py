@@ -1,13 +1,26 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import String, Integer, Float, DateTime, Text, Boolean, UniqueConstraint
+from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import Mapped, mapped_column
 
+from db import secretbox
 from db.database import Base
 
 
 def utcnow():
     return datetime.now(timezone.utc)
+
+
+class EncryptedString(TypeDecorator):
+    impl = String
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        return None if value is None else secretbox.encrypt(value)
+
+    def process_result_value(self, value, dialect):
+        return None if value is None else secretbox.decrypt(value)
 
 
 class Download(Base):
@@ -31,7 +44,7 @@ class Download(Base):
     album_artist: Mapped[str | None] = mapped_column(String(500), nullable=True)
     playlist_name: Mapped[str | None] = mapped_column(String(500), nullable=True)
     navidrome_username: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    navidrome_password: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    navidrome_password: Mapped[str | None] = mapped_column(EncryptedString(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
