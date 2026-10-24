@@ -336,7 +336,7 @@ export const api = {
     return request('/api/devices/known');
   },
 
-  async forgetDevice(device_id: string): Promise<void> {
+  async forgetDevice(device_id: string): Promise<{ ok: boolean; token: string }> {
     return request(`/api/devices/known/${encodeURIComponent(device_id)}`, { method: 'DELETE' });
   },
 

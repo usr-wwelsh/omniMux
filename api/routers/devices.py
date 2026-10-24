@@ -5,14 +5,14 @@ import os
 import time
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.database import get_db
 from db.models import KnownDevice, utcnow
-from routers.auth import get_current_user, UserContext
+from routers.auth import _create_token, get_current_user, revoke_tokens, set_token_cookie, UserContext
 
 logger = logging.getLogger(__name__)
 
@@ -293,6 +293,8 @@ async def list_known_devices(
 @router.delete("/devices/known/{device_id}")
 async def forget_device(
     device_id: str,
+    request: Request,
+    response: Response,
     user: UserContext = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -301,4 +303,7 @@ async def forget_device(
         await db.delete(row)
         await db.commit()
     _known_device_writes.pop((user.username, device_id), None)
-    return {"ok": True}
+    generation = await revoke_tokens(db, user.username)
+    token = _create_token(user.username, user.password, user.role, generation)
+    set_token_cookie(request, response, token)
+    return {"ok": True, "token": token}

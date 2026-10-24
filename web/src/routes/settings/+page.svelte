@@ -7,7 +7,7 @@
     visCycleInterval, ambientIdleMinutes,
     djPersonality, PERSONALITY_CONFIGS, type DJPersonality,
   } from '$lib/stores/autodj';
-  import { isGuest } from '$lib/auth';
+  import { auth, isGuest, login } from '$lib/auth';
   import { api, type KnownDevice } from '$lib/api';
 
   const themes: { value: Theme; label: string; description: string }[] = [
@@ -79,7 +79,8 @@
   });
 
   async function forget(device_id: string) {
-    await api.forgetDevice(device_id);
+    const { token } = await api.forgetDevice(device_id);
+    login(token, $auth.username, $auth.role);
     knownDevices = knownDevices.filter((d) => d.device_id !== device_id);
   }
 

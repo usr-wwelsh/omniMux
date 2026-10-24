@@ -8,7 +8,10 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from db.database import get_db
+from db.models import TokenGeneration
 from services.navidrome import validate_credentials
 
 router = APIRouter()
@@ -68,6 +71,7 @@ class UserContext(BaseModel):
     username: str
     password: str
     role: str = "user"
+    generation: int = 0
 
 
 def _build_fernet(secret: str) -> Fernet:
@@ -80,8 +84,25 @@ def _build_fernet(secret: str) -> Fernet:
 _fernet = _build_fernet(JWT_SECRET)
 
 
-def _create_token(username: str, password: str, role: str = "user") -> str:
+async def current_generation(db: AsyncSession, username: str) -> int:
+    row = await db.get(TokenGeneration, username)
+    return row.generation if row else 0
+
+
+async def revoke_tokens(db: AsyncSession, username: str) -> int:
+    row = await db.get(TokenGeneration, username)
+    if row:
+        row.generation += 1
+    else:
+        row = TokenGeneration(username=username, generation=1)
+        db.add(row)
+    await db.commit()
+    return row.generation
+
+
+def _create_token(username: str, password: str, role: str = "user", generation: int = 0) -> str:
     payload = {
+        "gen": generation,
         "sub": username,
         "pwd": _fernet.encrypt(password.encode()).decode(),
         "role": role,
@@ -97,6 +118,7 @@ def _decode_token(token: str) -> UserContext:
             username=payload["sub"],
             password=_fernet.decrypt(payload["pwd"].encode()).decode(),
             role=payload.get("role", "user"),
+            generation=payload.get("gen", 0),
         )
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
@@ -104,22 +126,28 @@ def _decode_token(token: str) -> UserContext:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 
-async def get_current_user(request: Request) -> UserContext:
+async def _require_current_generation(user: UserContext, db: AsyncSession) -> UserContext:
+    if user.generation != await current_generation(db, user.username):
+        raise HTTPException(status_code=401, detail="Token revoked")
+    return user
+
+
+async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)) -> UserContext:
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing authorization")
     token = auth_header.removeprefix("Bearer ")
-    return _decode_token(token)
+    return await _require_current_generation(_decode_token(token), db)
 
 
-async def get_user_flexible(request: Request) -> UserContext:
+async def get_user_flexible(request: Request, db: AsyncSession = Depends(get_db)) -> UserContext:
     """Authenticate from a Bearer header (XHR) or the token cookie (media tags)."""
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
-        return _decode_token(auth_header.removeprefix("Bearer "))
+        return await _require_current_generation(_decode_token(auth_header.removeprefix("Bearer ")), db)
     cookie_token = request.cookies.get(TOKEN_COOKIE)
     if cookie_token:
-        return _decode_token(cookie_token)
+        return await _require_current_generation(_decode_token(cookie_token), db)
     raise HTTPException(status_code=401, detail="Missing authorization")
 
 
@@ -130,11 +158,15 @@ async def require_non_guest(user: UserContext = Depends(get_current_user)) -> Us
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(body: LoginRequest, request: Request, response: Response):
+async def login(
+    body: LoginRequest, request: Request, response: Response, db: AsyncSession = Depends(get_db)
+):
     valid = await validate_credentials(body.username, body.password)
     if not valid:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    token = _create_token(body.username, body.password)
+    token = _create_token(
+        body.username, body.password, generation=await current_generation(db, body.username)
+    )
     set_token_cookie(request, response, token)
     return LoginResponse(token=token, username=body.username, role="user")
 

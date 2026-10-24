@@ -102,6 +102,13 @@ class KnownDevice(Base):
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
+class TokenGeneration(Base):
+    __tablename__ = "token_generations"
+
+    username: Mapped[str] = mapped_column(String(200), primary_key=True)
+    generation: Mapped[int] = mapped_column(default=0)
+
+
 class TrackMapping(Base):
     __tablename__ = "track_mappings"
 

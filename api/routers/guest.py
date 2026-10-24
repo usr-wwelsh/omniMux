@@ -11,6 +11,7 @@ from routers.auth import (
     LoginResponse,
     UserContext,
     _create_token,
+    current_generation,
     require_non_guest,
     set_token_cookie,
 )
@@ -49,7 +50,12 @@ async def guest_login(request: Request, response: Response, db: AsyncSession = D
     if not valid:
         raise HTTPException(status_code=500, detail="Guest account credentials are invalid")
 
-    token = _create_token(GUEST_USERNAME, pwd_row.value, role="guest")
+    token = _create_token(
+        GUEST_USERNAME,
+        pwd_row.value,
+        role="guest",
+        generation=await current_generation(db, GUEST_USERNAME),
+    )
     set_token_cookie(request, response, token)
     return GuestLoginResponse(token=token, username=GUEST_USERNAME, role="guest")
 
