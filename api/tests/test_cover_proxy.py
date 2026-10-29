@@ -4,7 +4,11 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from db.database import Base, get_db
 from routers import library
+from services import covers
 from routers.auth import UserContext, get_user_flexible
 
 IMAGE = b"\xff\xd8\xff\xe0JFIF-ish-bytes"
@@ -41,13 +45,25 @@ class FakeNavidrome:
 
 
 @pytest.fixture
-def app():
+async def app():
+    eng = create_async_engine("sqlite+aiosqlite://")
+    async with eng.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(eng, expire_on_commit=False)
+
+    async def db():
+        async with sessions() as s:
+            yield s
+
+    covers.invalidate()
     api = FastAPI()
     api.include_router(library.router, prefix="/api")
+    api.dependency_overrides[get_db] = db
     api.dependency_overrides[get_user_flexible] = lambda: UserContext(
         username="tester", password="secret", role="admin"
     )
-    return api
+    yield api
+    await eng.dispose()
 
 
 @pytest.fixture

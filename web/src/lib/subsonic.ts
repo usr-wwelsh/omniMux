@@ -1,5 +1,6 @@
 import { get } from 'svelte/store';
 import { auth } from './auth';
+import { coverOverridesReady, coverVersion } from './covers';
 
 // All Subsonic traffic is proxied through the omniMux API, which injects the
 // Navidrome credentials server-side. The browser only carries the JWT — no
@@ -121,7 +122,8 @@ export async function streamUrl(id: string): Promise<string> {
 }
 
 export async function coverArtUrl(id: string, size = 800): Promise<string> {
-  return `${LIBRARY_BASE}/cover/${encodeURIComponent(id)}?size=${size}`;
+  await coverOverridesReady();
+  return `${LIBRARY_BASE}/cover/${encodeURIComponent(id)}?size=${size}&ov=${coverVersion()}`;
 }
 
 export async function fetchItunesArtwork(artist: string, album: string): Promise<string | null> {

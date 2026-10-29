@@ -1,4 +1,5 @@
 import { writable, get } from 'svelte/store';
+import { hasCoverOverride } from '../covers';
 import { streamUrl, coverArtUrl, fetchItunesArtwork, subsonic, type Song } from '../subsonic';
 import { auth } from '../auth';
 import { api } from '../api';
@@ -314,6 +315,16 @@ export function applyServerQueueState(
   }
 }
 
+export async function refreshCurrentArt(albumId: string) {
+  const track = get(currentTrack);
+  if (!track || track.albumId !== albumId) return;
+  const coverUrl = track.coverArt ? await coverArtUrl(track.coverArt) : undefined;
+  const updated = { ...track, coverUrl, hqCoverUrl: undefined };
+  currentTrack.set(updated);
+  updateMediaSession(updated);
+  fetchHqArtwork(updated);
+}
+
 function updateMediaSession(track: Track) {
   if (!('mediaSession' in navigator)) return;
   const artwork: MediaImage[] = [];
@@ -570,7 +581,7 @@ export function playTrack(track: Track) {
 // Fetch HQ art in the background — doesn't block playback.
 // Token prevents a slow response from an earlier track clobbering the current one.
 function fetchHqArtwork(track: Track) {
-  if (track.hqCoverUrl) return;
+  if (track.hqCoverUrl || hasCoverOverride(track.albumId)) return;
   const token = ++_artworkFetchToken;
   fetchItunesArtwork(track.artist, track.album).then((url) => {
     if (!url || token !== _artworkFetchToken) return;
@@ -1069,7 +1080,7 @@ export function startCrossfade(nextIdx: number, durationSecs: number, doBeatmatc
         const myId = get(localDeviceId);
         if (myId) activeDeviceId.set(myId);
 
-        if (!nextTrack.hqCoverUrl) {
+        if (!nextTrack.hqCoverUrl && !hasCoverOverride(nextTrack.albumId)) {
           const token = ++_artworkFetchToken;
           fetchItunesArtwork(nextTrack.artist, nextTrack.album).then((url) => {
             if (!url || token !== _artworkFetchToken) return;

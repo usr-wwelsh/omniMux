@@ -40,7 +40,7 @@ async def clear_finished_passwords(conn) -> None:
 
 
 async def init_db():
-    from db.models import Download, TrackMapping, UserSettings, TrackFlags, SystemConfig, KnownDevice  # noqa: F401
+    from db.models import Download, TrackMapping, UserSettings, TrackFlags, SystemConfig, KnownDevice, CoverOverride  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.execute(text("PRAGMA journal_mode=WAL"))

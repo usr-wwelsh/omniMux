@@ -12,6 +12,7 @@
   import GuestBanner from '../components/GuestBanner.svelte';
   import UpdateBanner from '../components/UpdateBanner.svelte';
   import { startDeviceSync, stopDeviceSync } from '$lib/stores/devices';
+  import { loadCoverOverrides } from '$lib/covers';
   import { initSettingsSync, resetSettingsSync } from '$lib/stores/settingsSync';
   import { showFullscreenPlayer } from '$lib/stores/ui';
   import { theme } from '$lib/stores/theme';
@@ -70,6 +71,7 @@
     if ($auth.authenticated) {
       startDeviceSync();
       initSettingsSync();
+      loadCoverOverrides();
       return () => {
         stopDeviceSync();
         resetSettingsSync();

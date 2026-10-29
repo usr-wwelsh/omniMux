@@ -192,6 +192,11 @@ export interface QueueState {
   queue_version: number;
 }
 
+export interface CoverSuggestion {
+  url: string;
+  source: string;
+}
+
 export interface DiscoverResult {
   artist: string;
   title: string;
@@ -280,6 +285,34 @@ export const api = {
 
   async getDownloads(): Promise<DownloadStatus[]> {
     return request('/api/downloads');
+  },
+
+  async getCoverOverrides(): Promise<{ albums: string[]; version: number }> {
+    return request('/api/covers');
+  },
+
+  async getCoverSuggestions(artist: string, album: string): Promise<CoverSuggestion[]> {
+    const params = new URLSearchParams({ artist, album });
+    return request(`/api/covers/suggestions?${params}`);
+  },
+
+  async uploadCover(albumId: string, image: Blob): Promise<void> {
+    await request(`/api/covers/${encodeURIComponent(albumId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': image.type || 'image/jpeg' },
+      body: image,
+    });
+  },
+
+  async pickCover(albumId: string, url: string): Promise<void> {
+    await request(`/api/covers/${encodeURIComponent(albumId)}/from-url`, {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    });
+  },
+
+  async resetCover(albumId: string): Promise<void> {
+    await request(`/api/covers/${encodeURIComponent(albumId)}`, { method: 'DELETE' });
   },
 
   async getCachedIds(): Promise<string[]> {

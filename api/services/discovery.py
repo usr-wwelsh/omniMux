@@ -158,6 +158,20 @@ async def fingerprint_lookup(
     return meta
 
 
+async def mb_release_ids(artist: str, album: str, limit: int) -> list[str]:
+    """Releases whose title matches the album, best match first, so alternate
+    editions (deluxe, regional, reissue) each get a chance to supply art."""
+    query = f'release:"{album}" AND artist:"{artist}"' if artist else f'release:"{album}"'
+    data = await _musicbrainz_get(
+        "https://musicbrainz.org/ws/2/release",
+        {"query": query, "fmt": "json", "limit": 25},
+    )
+    target = albums.norm_album(album)
+    releases = [r for r in data.get("releases") or [] if albums.norm_album(r.get("title", "")) == target]
+    releases.sort(key=lambda r: -r.get("score", 0))
+    return [r["id"] for r in releases[:limit] if r.get("id")]
+
+
 async def mb_search_release(artist: str, album: str) -> dict | None:
     """Find a release by name, for tracks that aren't downloaded yet.
 

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Integer, Float, DateTime, Text, Boolean, UniqueConstraint
+from sqlalchemy import String, Integer, Float, DateTime, Text, Boolean, LargeBinary, UniqueConstraint
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -120,3 +120,12 @@ class TrackMapping(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     __table_args__ = (UniqueConstraint("youtube_id"),)
+
+
+class CoverOverride(Base):
+    __tablename__ = "cover_overrides"
+
+    album_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    content_type: Mapped[str] = mapped_column(String(50))
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

@@ -6,6 +6,9 @@
   import { invalidateLibrary } from '$lib/stores/libraryCache';
   import TrackList from '../../../../components/TrackList.svelte';
   import RelatedAlbums from '../../../../components/RelatedAlbums.svelte';
+  import CoverPickerModal from '../../../../components/CoverPickerModal.svelte';
+  import { hasCoverOverride } from '$lib/covers';
+  import { refreshCurrentArt } from '$lib/stores/player';
 
   // --- merge modal state ---
   let mergeOpen = $state(false);
@@ -102,6 +105,7 @@
   let songs = $state<Song[]>([]);
   let playlistsBySong = $state<Map<string, Playlist[]>>(new Map());
   let coverUrl = $state('');
+  let coverPicker = $state(false);
   let loading = $state(true);
 
   let context = $state<AlbumContext | null>(null);
@@ -140,9 +144,8 @@
       const data = await subsonic.getAlbum(id);
       album = data.album;
       songs = data.songs;
-      if (data.album.coverArt) {
-        coverUrl = await coverArtUrl(data.album.coverArt, 500);
-      }
+      const art = artFor(data.album);
+      if (art) coverUrl = await coverArtUrl(art, 500);
       api.getAlbumContext(data.album.artist, data.album.name)
         .then((c) => { context = c.found && (c.wiki || c.tags.length > 0) ? c : null; })
         .catch(() => { context = null; });
@@ -157,6 +160,18 @@
     } finally {
       loading = false;
     }
+  }
+
+  function artFor(al: Album): string | undefined {
+    return al.coverArt ?? (hasCoverOverride(al.id) ? `al-${al.id}` : undefined);
+  }
+
+  async function refreshCover() {
+    if (!album) return;
+    const art = artFor(album);
+    if (!art) return;
+    coverUrl = await coverArtUrl(art, 500);
+    refreshCurrentArt(album.id);
   }
 
   async function checkMissingTracks(al: Album, localSongs: Song[]) {
@@ -406,12 +421,22 @@
     <p class="loading-text">Loading...</p>
   {:else if album}
     <div class="album-header">
-      {#if coverUrl}
-        <img src={coverUrl} alt={album.name} class="album-cover" />
+      {#snippet art()}
+        {#if coverUrl}
+          <img src={coverUrl} alt={album!.name} class="album-cover" />
+        {:else}
+          <div class="album-cover placeholder">
+            <svg viewBox="0 0 24 24" width="64" height="64" fill="var(--text-subdued)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+          </div>
+        {/if}
+      {/snippet}
+      {#if $isGuest}
+        {@render art()}
       {:else}
-        <div class="album-cover placeholder">
-          <svg viewBox="0 0 24 24" width="64" height="64" fill="var(--text-subdued)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
-        </div>
+        <button class="cover-btn" title="Change album art" aria-label="Change album art" onclick={() => (coverPicker = true)}>
+          {@render art()}
+          <span class="cover-edit">Change art</span>
+        </button>
       {/if}
       <div class="album-info">
         <span class="album-type">Album</span>
@@ -638,7 +663,45 @@
   </div>
 {/if}
 
+{#if coverPicker && album}
+  <CoverPickerModal
+    albumId={album.id}
+    artist={album.artist}
+    album={album.name}
+    onclose={() => (coverPicker = false)}
+    onchange={refreshCover}
+  />
+{/if}
+
 <style>
+  .cover-btn {
+    position: relative;
+    padding: 0;
+    background: none;
+    border: none;
+    flex-shrink: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    display: block;
+  }
+
+  .cover-edit {
+    position: absolute;
+    inset: auto 0 0 0;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .cover-btn:hover .cover-edit,
+  .cover-btn:focus-visible .cover-edit {
+    opacity: 1;
+  }
+
   .album-page {
     max-width: 900px;
   }

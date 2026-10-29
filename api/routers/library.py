@@ -5,7 +5,12 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.database import get_db
+from db.models import CoverOverride
 from routers.auth import UserContext, get_user_flexible
+from services import covers
 from services.navidrome import SUBSONIC_AUTH_KEYS, subsonic_auth_params
 
 NAVIDROME_URL = os.environ.get("NAVIDROME_URL", "http://localhost:4533")
@@ -141,8 +146,21 @@ async def cover(
     cover_id: str,
     request: Request,
     user: UserContext = Depends(get_user_flexible),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Cover-art proxy."""
+    """Cover-art proxy. A user-chosen cover for the album wins over Navidrome's."""
+    if await covers.override_ids(db):
+        album_id = await covers.album_for_cover(
+            cover_id, user.username, user.password, _shared_client()
+        )
+        if album_id in await covers.override_ids(db):
+            row = await db.get(CoverOverride, album_id)
+            if row:
+                return Response(
+                    content=row.data,
+                    media_type=row.content_type,
+                    headers={"Cache-Control": "public, max-age=86400"},
+                )
     params = subsonic_auth_params(user.username, user.password)
     params["id"] = cover_id
     if (size := request.query_params.get("size")) is not None:
