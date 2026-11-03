@@ -11,6 +11,7 @@ from db.models import Download, TrackMapping
 from services import albums
 from services.discovery import fingerprint_lookup, lookup_genre
 from services.metadata import tag_file
+from services.mood import analyze_mood
 from services.navidrome import trigger_scan, search_song, get_or_create_playlist, add_song_to_playlist
 from services.youtube import validate_youtube_url
 
@@ -19,7 +20,6 @@ MAX_CONCURRENT = 3
 
 _semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 _in_progress: set[str] = set()
-_mood_semaphore = asyncio.Semaphore(1)  # one mood analysis at a time
 
 
 def _sanitize(name: str) -> str:
@@ -154,7 +154,7 @@ async def _do_download(download_id: int, username: str, password: str) -> None:
 
     # Step 2: Mood analysis
     await _update_download(download_id, status="analyzing", progress=85)
-    mood_result = await _analyze_mood(str(file_path))
+    mood_result = await analyze_mood(str(file_path))
 
     # Step 3: AcousticID metadata enrichment — override sloppy YT metadata if confident match.
     # The album is never taken from a bare fingerprint: a recording sits on dozens of
@@ -320,48 +320,3 @@ async def _add_to_navidrome_playlist(title: str, artist: str, playlist_name: str
             await add_song_to_playlist(playlist_id, song_id, username, password)
     except Exception:
         pass
-
-
-async def _analyze_mood(file_path: str) -> dict | None:
-    async with _mood_semaphore:
-        import json
-        import sys
-        import tempfile
-
-        analyze_path = file_path
-        tmp_path = None
-
-        try:
-            # mood_detector doesn't support opus; convert a 60s sample to flac
-            if Path(file_path).suffix.lower() == ".opus":
-                tmp = tempfile.NamedTemporaryFile(suffix=".flac", delete=False)
-                tmp_path = tmp.name
-                tmp.close()
-                proc = await asyncio.create_subprocess_exec(
-                    "ffmpeg", "-y",
-                    "-t", "60",
-                    "-i", file_path,
-                    "-threads", "1",
-                    tmp_path,
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                )
-                await proc.wait()
-                analyze_path = tmp_path
-
-            # Run in a subprocess so ML model memory is freed when it exits
-            worker = Path(__file__).parent / "mood_worker.py"
-            proc = await asyncio.create_subprocess_exec(
-                sys.executable, str(worker), analyze_path,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            stdout, _ = await proc.communicate()
-            if proc.returncode != 0 or not stdout:
-                return None
-            return json.loads(stdout)
-        except Exception:
-            return None
-        finally:
-            if tmp_path:
-                Path(tmp_path).unlink(missing_ok=True)

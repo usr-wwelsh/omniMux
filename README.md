@@ -69,7 +69,7 @@ Paste a YouTube playlist URL — omniMux queues all tracks and builds a matching
 <td valign="top">
 
 ### 🧠 Mood Analysis
-Every download is analysed for mood, BPM, energy, and key via [mood-detector](https://github.com/usr-wwelsh/mood-detector).
+Every download is analysed for mood, BPM, energy, and key via [mood](https://github.com/usr-wwelsh/Mood-Detector), a single static Go binary.
 
 </td>
 </tr>
@@ -102,7 +102,7 @@ Shuffle the queue, loop all, or loop one — the basics, done right.
 | Music server | Navidrome (Subsonic API) |
 | API | Python · FastAPI · yt-dlp · ytmusicapi · mutagen |
 | Frontend | SvelteKit 5 · TypeScript |
-| Audio analysis | mood-detector |
+| Audio analysis | mood (Go) |
 | Infrastructure | Docker Compose |
 
 ## Quick start

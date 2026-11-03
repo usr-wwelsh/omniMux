@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.database import get_db, async_session
 from db.models import Download
 from routers.auth import get_current_user, UserContext
-from services.download_worker import _analyze_mood
+from services.mood import analyze_mood
 from services.navidrome import dedupe_playlists, get_or_create_playlist, replace_playlist_songs, search_song
 
 router = APIRouter()
@@ -70,7 +70,7 @@ async def backfill_moods(
 
     updated = 0
     for dl in downloads:
-        mood_result = await _analyze_mood(dl.file_path)
+        mood_result = await analyze_mood(dl.file_path)
         if not mood_result:
             await asyncio.sleep(0.5)
             continue
