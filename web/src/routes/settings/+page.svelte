@@ -416,7 +416,7 @@
       <div class="about-hero-text">
         <span class="about-name">omniMux</span>
         <span class="about-tagline">Multi-device music player with VJ visualizers</span>
-        <span class="about-version">v0.1.0-alpha</span>
+        <span class="about-version">{__APP_VERSION__ === 'dev' ? 'dev' : `v${__APP_VERSION__}`}</span>
       </div>
     </div>
 
