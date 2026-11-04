@@ -1,20 +1,20 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, waitFor, cleanup } from '@testing-library/svelte';
-import type { Album } from '$lib/subsonic';
+import type { Album } from '#lib/subsonic';
 
 const loadLibrary = vi.fn();
 let failLoad = false;
 
-vi.mock('$lib/subsonic', () => ({
+vi.mock('#lib/subsonic', () => ({
   coverArtUrl: async (id: string, size: number) => `/api/library/cover/${id}?size=${size}`,
   subsonic: { getAlbum: async () => ({ songs: [] }) },
 }));
 
-vi.mock('$lib/stores/libraryCache', () => ({
+vi.mock('#lib/stores/libraryCache', () => ({
   loadLibrary: () => (failLoad ? (loadLibrary(), Promise.reject(new Error('boom'))) : loadLibrary()),
 }));
 
-vi.mock('$lib/stores/player', () => ({
+vi.mock('#lib/stores/player', () => ({
   addSongToQueue: async () => {},
 }));
 

@@ -1,11 +1,11 @@
 <script lang="ts">
   import { get } from 'svelte/store';
-  import { errorMessage } from '$lib/errors';
+  import { errorMessage } from '#lib/errors';
   import { goto } from '$app/navigation';
-  import { isGuest } from '$lib/auth';
+  import { isGuest } from '#lib/auth';
   import { onMount } from 'svelte';
-  import { api, type TaggerTrack } from '$lib/api';
-  import { invalidateLibrary } from '$lib/stores/libraryCache';
+  import { api, type TaggerTrack } from '#lib/api';
+  import { invalidateLibrary } from '#lib/stores/libraryCache';
 
   let retagging = $state(false);
   let undoing = $state(false);

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { api, type DiscoverResult } from '$lib/api';
-  import { errorMessage } from '$lib/errors';
+  import { api, type DiscoverResult } from '#lib/api';
+  import { errorMessage } from '#lib/errors';
   import { goto } from '$app/navigation';
-  import { isGuest } from '$lib/auth';
-  import { recallDiscover, rememberDiscover } from '$lib/discoverCache';
-  import { progressAt, stageFor, scrambleFrame, nextWord, LOADER_WORDS } from '$lib/discoverLoader';
+  import { isGuest } from '#lib/auth';
+  import { recallDiscover, rememberDiscover } from '#lib/discoverCache';
+  import { progressAt, stageFor, scrambleFrame, nextWord, LOADER_WORDS } from '#lib/discoverLoader';
 
   $effect(() => {
     if ($isGuest) goto('/');

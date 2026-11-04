@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { Playlist, Song } from '$lib/subsonic';
+import type { Playlist, Song } from '#lib/subsonic';
 
 export const showFullscreenPlayer = writable(false);
 // Set to a song to open the "Add to playlist" modal for it, null to close.

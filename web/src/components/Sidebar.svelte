@@ -1,8 +1,8 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { logout, isGuest } from '$lib/auth';
+  import { logout, isGuest } from '#lib/auth';
   import { goto } from '$app/navigation';
-  import { sidebarCollapsed } from '$lib/stores/ui';
+  import { sidebarCollapsed } from '#lib/stores/ui';
 
   function handleLogout() {
     logout();

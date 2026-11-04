@@ -1,9 +1,9 @@
 <script lang="ts">
   import { get } from 'svelte/store';
-  import { currentTrack, isPlaying, currentTime, duration, volume, shuffle, loop, togglePlay, seek, setVolume, playNext, playPrev, toggleShuffle, cycleLoop, formatTime, activeDeviceId, localDeviceId, claimPlayback } from '$lib/stores/player';
-  import { otherDevices } from '$lib/stores/devices';
-  import { showFullscreenPlayer } from '$lib/stores/ui';
-  import { dragBar } from '$lib/dragBar';
+  import { currentTrack, isPlaying, currentTime, duration, volume, shuffle, loop, togglePlay, seek, setVolume, playNext, playPrev, toggleShuffle, cycleLoop, formatTime, activeDeviceId, localDeviceId, claimPlayback } from '#lib/stores/player';
+  import { otherDevices } from '#lib/stores/devices';
+  import { showFullscreenPlayer } from '#lib/stores/ui';
+  import { dragBar } from '#lib/dragBar';
   import DevicesPopover from './DevicesPopover.svelte';
 
   let seeking = $state(false);

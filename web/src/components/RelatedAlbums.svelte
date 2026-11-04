@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { Album } from '$lib/subsonic';
-  import { loadLibrary } from '$lib/stores/libraryCache';
-  import { relatedAlbums } from '$lib/relatedAlbums';
+  import type { Album } from '#lib/subsonic';
+  import { loadLibrary } from '#lib/stores/libraryCache';
+  import { relatedAlbums } from '#lib/relatedAlbums';
   import AlbumCard from './AlbumCard.svelte';
 
   interface Props {

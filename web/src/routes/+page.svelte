@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { subsonic, type Album, type Song, type Playlist } from '$lib/subsonic';
+  import { subsonic, type Album, type Song, type Playlist } from '#lib/subsonic';
   import AlbumCard from '../components/AlbumCard.svelte';
   import TrackList from '../components/TrackList.svelte';
-  import { otherDevices, listenHere } from '$lib/stores/devices';
-  import { addToQueue } from '$lib/stores/player';
-  import { streamUrl } from '$lib/subsonic';
-  import { autoDJActive, toggleAutoDJ } from '$lib/stores/autodj';
-  import { isGuest } from '$lib/auth';
+  import { otherDevices, listenHere } from '#lib/stores/devices';
+  import { addToQueue } from '#lib/stores/player';
+  import { streamUrl } from '#lib/subsonic';
+  import { autoDJActive, toggleAutoDJ } from '#lib/stores/autodj';
+  import { isGuest } from '#lib/auth';
 
   let randomAlbums = $state<Album[]>([]);
   let randomSongs = $state<Song[]>([]);

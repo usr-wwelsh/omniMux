@@ -1,14 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { errorMessage } from '$lib/errors';
-  import { theme, type Theme } from '$lib/stores/theme';
+  import { errorMessage } from '#lib/errors';
+  import { theme, type Theme } from '#lib/stores/theme';
   import {
     crossfadeDuration, beatmatchEnabled, bpmTolerance,
     visCycleInterval, ambientIdleMinutes,
     djPersonality, PERSONALITY_CONFIGS, type DJPersonality,
-  } from '$lib/stores/autodj';
-  import { auth, isGuest, login } from '$lib/auth';
-  import { api, type KnownDevice } from '$lib/api';
+  } from '#lib/stores/autodj';
+  import { auth, isGuest, login } from '#lib/auth';
+  import { api, type KnownDevice } from '#lib/api';
 
   const themes: { value: Theme; label: string; description: string }[] = [
     { value: 'spotify', label: 'Spotify', description: 'Dark green — the default look' },

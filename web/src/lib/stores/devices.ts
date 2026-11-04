@@ -1,9 +1,9 @@
 import { writable, get } from 'svelte/store';
-import { api, type DeviceSession } from '$lib/api';
+import { api, type DeviceSession } from '#lib/api';
 import { currentTrack, isPlaying, currentTime, playTrack, seek, localDeviceId, activeDeviceId, applyServerQueueState, recoverPlayback, type Track } from './player';
 import { artModeActive } from './ui';
 import { autoDJActive } from './autodj';
-import { streamUrl } from '$lib/subsonic';
+import { streamUrl } from '#lib/subsonic';
 
 export { type DeviceSession };
 

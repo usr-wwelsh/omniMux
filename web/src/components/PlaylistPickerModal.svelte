@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { playlistPickerTarget } from '$lib/stores/ui';
+  import { playlistPickerTarget } from '#lib/stores/ui';
 
   let playlists = $derived($playlistPickerTarget);
 

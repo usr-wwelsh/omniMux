@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { otherDevices, listenHere } from '$lib/stores/devices';
-  import { soloMode } from '$lib/stores/player';
+  import { otherDevices, listenHere } from '#lib/stores/devices';
+  import { soloMode } from '#lib/stores/player';
 
   let { onclose }: { onclose: () => void } = $props();
 </script>

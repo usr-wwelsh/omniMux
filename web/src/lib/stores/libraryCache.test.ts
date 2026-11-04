@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const getAllAlbums = vi.fn();
 const getArtists = vi.fn();
 
-vi.mock('$lib/subsonic', () => ({
+vi.mock('#lib/subsonic', () => ({
   subsonic: {
     getAllAlbums: () => getAllAlbums(),
     getArtists: () => getArtists(),

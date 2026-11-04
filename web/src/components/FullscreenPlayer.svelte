@@ -4,19 +4,19 @@
     shuffle, loop, togglePlay, seek, seekOnActiveDevice, setVolume,
     playNext, playPrev, toggleShuffle, cycleLoop, formatTime,
     queue, activeDeviceId, localDeviceId, claimPlayback,
-  } from '$lib/stores/player';
-  import { otherDevices } from '$lib/stores/devices';
-  import { showFullscreenPlayer, artModeActive, artExpandRequested, autoDJToast } from '$lib/stores/ui';
-  import { autoDJActive, visCyclingPaused } from '$lib/stores/autodj';
+  } from '#lib/stores/player';
+  import { otherDevices } from '#lib/stores/devices';
+  import { showFullscreenPlayer, artModeActive, artExpandRequested, autoDJToast } from '#lib/stores/ui';
+  import { autoDJActive, visCyclingPaused } from '#lib/stores/autodj';
   import { onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
-  import { dragBar } from '$lib/dragBar';
+  import { dragBar } from '#lib/dragBar';
   import QueuePanel from './QueuePanel.svelte';
   import AutoDJPanel from './AutoDJPanel.svelte';
   import {
     visMode, type VisMode, getAnalyser, resumeContext,
     fillFrequencyData, bassFromBuf, midFromBuf, overallFromBuf, detectBeat, resetBeatDetector,
-  } from '$lib/stores/visualizer';
+  } from '#lib/stores/visualizer';
 
   // ── WebGL visualizer ─────────────────────────────────────────────────────
   type ProgLocs = Record<string, WebGLUniformLocation | null>;

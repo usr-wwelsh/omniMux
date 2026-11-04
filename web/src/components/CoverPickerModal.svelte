@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { api, type CoverSuggestion } from '$lib/api';
-  import { loadCoverOverrides, downscaleToJpeg, hasCoverOverride } from '$lib/covers';
-  import { errorMessage } from '$lib/errors';
+  import { api, type CoverSuggestion } from '#lib/api';
+  import { loadCoverOverrides, downscaleToJpeg, hasCoverOverride } from '#lib/covers';
+  import { errorMessage } from '#lib/errors';
 
   let { albumId, artist, album, onclose, onchange }: {
     albumId: string;

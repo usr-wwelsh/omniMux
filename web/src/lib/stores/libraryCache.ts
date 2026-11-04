@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import { subsonic, type Album, type Artist } from '$lib/subsonic';
+import { subsonic, type Album, type Artist } from '#lib/subsonic';
 
 export type SortKey = 'name' | 'artist' | 'added' | 'year' | 'played' | 'plays';
 

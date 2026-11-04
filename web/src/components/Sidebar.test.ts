@@ -15,10 +15,10 @@ const storage = vi.hoisted(() => {
 
 vi.mock('$app/state', () => ({ page: { url: new URL('http://x/') } }));
 vi.mock('$app/navigation', () => ({ goto: () => {} }));
-vi.mock('$lib/auth', () => ({ logout: () => {}, isGuest: writable(false) }));
+vi.mock('#lib/auth', () => ({ logout: () => {}, isGuest: writable(false) }));
 
 import Sidebar from './Sidebar.svelte';
-import { sidebarCollapsed } from '$lib/stores/ui';
+import { sidebarCollapsed } from '#lib/stores/ui';
 
 beforeEach(() => sidebarCollapsed.set(false));
 afterEach(cleanup);

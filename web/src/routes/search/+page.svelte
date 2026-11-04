@@ -1,10 +1,10 @@
 <script lang="ts">
   import { replaceState } from '$app/navigation';
-  import { api, thumbUrl, type YouTubeResult } from '$lib/api';
-  import { subsonic, SEARCH_SONG_PAGE_SIZE, type Artist, type Album, type Song } from '$lib/subsonic';
-  import { isGuest } from '$lib/auth';
-  import { cachedSearch, rememberSearch, forgetSearch, lastSearch } from '$lib/stores/searchCache';
-  import { invalidateLibrary } from '$lib/stores/libraryCache';
+  import { api, thumbUrl, type YouTubeResult } from '#lib/api';
+  import { subsonic, SEARCH_SONG_PAGE_SIZE, type Artist, type Album, type Song } from '#lib/subsonic';
+  import { isGuest } from '#lib/auth';
+  import { cachedSearch, rememberSearch, forgetSearch, lastSearch } from '#lib/stores/searchCache';
+  import { invalidateLibrary } from '#lib/stores/libraryCache';
   import TrackList from '../../components/TrackList.svelte';
   import AlbumCard from '../../components/AlbumCard.svelte';
 

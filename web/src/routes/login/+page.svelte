@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { errorMessage } from '$lib/errors';
-  import { api } from '$lib/api';
-  import { login } from '$lib/auth';
+  import { errorMessage } from '#lib/errors';
+  import { api } from '#lib/api';
+  import { login } from '#lib/auth';
   import { goto } from '$app/navigation';
 
   let username = $state('');

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { subsonic, type Artist, type Album, type Song } from '$lib/subsonic';
-  import { playQueue } from '$lib/stores/player';
+  import { subsonic, type Artist, type Album, type Song } from '#lib/subsonic';
+  import { playQueue } from '#lib/stores/player';
   import {
     cachedLibrary, loadLibrary, refreshLibrary, isStale,
     rememberRanking, recalledRanking, libraryView, type SortKey,
-  } from '$lib/stores/libraryCache';
+  } from '#lib/stores/libraryCache';
   import AlbumCard from '../../components/AlbumCard.svelte';
 
   const cached = cachedLibrary();

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { currentTrack, queue, queueIndex, clearQueue } from '$lib/stores/player';
-  import { nowPlayingCollapsed } from '$lib/stores/ui';
+  import { currentTrack, queue, queueIndex, clearQueue } from '#lib/stores/player';
+  import { nowPlayingCollapsed } from '#lib/stores/ui';
 </script>
 
 <aside class="now-playing" class:collapsed={$nowPlayingCollapsed}>

@@ -1,9 +1,9 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { type Song, type Playlist } from '$lib/subsonic';
-  import { playQueue, addSongToQueue, formatTime, currentTrack, isPlaying } from '$lib/stores/player';
-  import { addToPlaylistTarget, playlistPickerTarget } from '$lib/stores/ui';
-  import { isGuest } from '$lib/auth';
+  import { type Song, type Playlist } from '#lib/subsonic';
+  import { playQueue, addSongToQueue, formatTime, currentTrack, isPlaying } from '#lib/stores/player';
+  import { addToPlaylistTarget, playlistPickerTarget } from '#lib/stores/ui';
+  import { isGuest } from '#lib/auth';
 
   interface Props {
     songs: Song[];

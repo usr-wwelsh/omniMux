@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { subsonic, type Playlist } from '$lib/subsonic';
-  import { addToPlaylistTarget } from '$lib/stores/ui';
-  import { focusOnMount } from '$lib/focusOnMount';
+  import { subsonic, type Playlist } from '#lib/subsonic';
+  import { addToPlaylistTarget } from '#lib/stores/ui';
+  import { focusOnMount } from '#lib/focusOnMount';
 
   let song = $derived($addToPlaylistTarget);
 

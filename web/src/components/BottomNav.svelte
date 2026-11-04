@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { isGuest } from '$lib/auth';
+  import { isGuest } from '#lib/auth';
 </script>
 
 <nav class="bottom-nav">

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
-  import { queue, queueIndex, jumpToQueue, removeFromQueue, reorderQueue, clearQueue, formatTime } from '$lib/stores/player';
-  import { autoDJActive, fillQueueBatch } from '$lib/stores/autodj';
+  import { queue, queueIndex, jumpToQueue, removeFromQueue, reorderQueue, clearQueue, formatTime } from '#lib/stores/player';
+  import { autoDJActive, fillQueueBatch } from '#lib/stores/autodj';
 
   // Mouse drag state
   let dragging = $state(-1);

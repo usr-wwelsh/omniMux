@@ -1,5 +1,5 @@
-import type { Artist, Album, Song } from '$lib/subsonic';
-import type { YouTubeResult } from '$lib/api';
+import type { Artist, Album, Song } from '#lib/subsonic';
+import type { YouTubeResult } from '#lib/api';
 
 export type SearchSnapshot = {
   query: string;

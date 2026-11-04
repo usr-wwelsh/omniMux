@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { api, type ChannelPlaylist } from '$lib/api';
-  import { errorMessage } from '$lib/errors';
-  import { focusOnMount } from '$lib/focusOnMount';
+  import { api, type ChannelPlaylist } from '#lib/api';
+  import { errorMessage } from '#lib/errors';
+  import { focusOnMount } from '#lib/focusOnMount';
 
   let { onclose, onimported }: {
     onclose: () => void;

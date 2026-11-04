@@ -1,9 +1,9 @@
 <script lang="ts">
   import '../app.css';
-  import { auth, isGuest } from '$lib/auth';
+  import { auth, isGuest } from '#lib/auth';
   import { goto, beforeNavigate, afterNavigate } from '$app/navigation';
   import { page } from '$app/state';
-  import { scrollKey, rememberScroll, recallScroll, restoreScroll } from '$lib/scrollMemory';
+  import { scrollKey, rememberScroll, recallScroll, restoreScroll } from '#lib/scrollMemory';
   import Sidebar from '../components/Sidebar.svelte';
   import BottomNav from '../components/BottomNav.svelte';
   import Player from '../components/Player.svelte';
@@ -11,13 +11,13 @@
   import NowPlaying from '../components/NowPlaying.svelte';
   import GuestBanner from '../components/GuestBanner.svelte';
   import UpdateBanner from '../components/UpdateBanner.svelte';
-  import { startDeviceSync, stopDeviceSync } from '$lib/stores/devices';
-  import { loadCoverOverrides } from '$lib/covers';
-  import { initSettingsSync, resetSettingsSync } from '$lib/stores/settingsSync';
-  import { showFullscreenPlayer } from '$lib/stores/ui';
-  import { theme } from '$lib/stores/theme';
+  import { startDeviceSync, stopDeviceSync } from '#lib/stores/devices';
+  import { loadCoverOverrides } from '#lib/covers';
+  import { initSettingsSync, resetSettingsSync } from '#lib/stores/settingsSync';
+  import { showFullscreenPlayer } from '#lib/stores/ui';
+  import { theme } from '#lib/stores/theme';
   import { get } from 'svelte/store';
-  import { togglePlay, seek, setVolume, playNext, playPrev, toggleShuffle, cycleLoop, currentTime, duration, volume, currentTrack } from '$lib/stores/player';
+  import { togglePlay, seek, setVolume, playNext, playPrev, toggleShuffle, cycleLoop, currentTime, duration, volume, currentTrack } from '#lib/stores/player';
 
   $effect(() => {
     document.documentElement.setAttribute('data-theme', $theme);

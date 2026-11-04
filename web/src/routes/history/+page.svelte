@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { subsonic, type Album } from '$lib/subsonic';
+  import { subsonic, type Album } from '#lib/subsonic';
   import AlbumCard from '../../components/AlbumCard.svelte';
 
   let recent = $state<Album[]>([]);

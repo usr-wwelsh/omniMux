@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { targetBpm } from '$lib/stores/autodj';
-  import { keylock } from '$lib/stores/player';
+  import { targetBpm } from '#lib/stores/autodj';
+  import { keylock } from '#lib/stores/player';
 
   const MIN_BPM = 100;
   const MAX_BPM = 200;

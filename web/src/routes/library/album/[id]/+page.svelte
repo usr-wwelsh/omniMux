@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { subsonic, coverArtUrl, type Album, type Song, type Playlist } from '$lib/subsonic';
-  import { errorMessage } from '$lib/errors';
-  import { api, type YouTubeResult, type AlbumContext } from '$lib/api';
-  import { isGuest } from '$lib/auth';
-  import { invalidateLibrary } from '$lib/stores/libraryCache';
+  import { subsonic, coverArtUrl, type Album, type Song, type Playlist } from '#lib/subsonic';
+  import { errorMessage } from '#lib/errors';
+  import { api, type YouTubeResult, type AlbumContext } from '#lib/api';
+  import { isGuest } from '#lib/auth';
+  import { invalidateLibrary } from '#lib/stores/libraryCache';
   import TrackList from '../../../../components/TrackList.svelte';
   import RelatedAlbums from '../../../../components/RelatedAlbums.svelte';
   import CoverPickerModal from '../../../../components/CoverPickerModal.svelte';
-  import { hasCoverOverride } from '$lib/covers';
-  import { refreshCurrentArt } from '$lib/stores/player';
+  import { hasCoverOverride } from '#lib/covers';
+  import { refreshCurrentArt } from '#lib/stores/player';
 
   // --- merge modal state ---
   let mergeOpen = $state(false);

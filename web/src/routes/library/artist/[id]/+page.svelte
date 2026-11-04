@@ -1,9 +1,9 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { subsonic, type Artist, type Album, type Song } from '$lib/subsonic';
-  import { api, type YouTubeResult, type ArtistContext } from '$lib/api';
-  import { isGuest } from '$lib/auth';
-  import { playQueue } from '$lib/stores/player';
+  import { subsonic, type Artist, type Album, type Song } from '#lib/subsonic';
+  import { api, type YouTubeResult, type ArtistContext } from '#lib/api';
+  import { isGuest } from '#lib/auth';
+  import { playQueue } from '#lib/stores/player';
   import AlbumCard from '../../../../components/AlbumCard.svelte';
 
   let artist = $state<Artist | null>(null);

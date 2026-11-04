@@ -1,11 +1,11 @@
 <script lang="ts">
   import { get } from 'svelte/store';
-  import { errorMessage } from '$lib/errors';
+  import { errorMessage } from '#lib/errors';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { api, type DownloadStatus } from '$lib/api';
-  import { isGuest } from '$lib/auth';
-  import { invalidateLibrary } from '$lib/stores/libraryCache';
+  import { api, type DownloadStatus } from '#lib/api';
+  import { isGuest } from '#lib/auth';
+  import { invalidateLibrary } from '#lib/stores/libraryCache';
   import YoutubeAccountModal from '../../components/YoutubeAccountModal.svelte';
 
   onMount(() => {

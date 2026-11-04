@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 
 export type Theme = 'spotify' | 'light' | 'waybar' | 'win98' | 'bubblegum' | 'amber' | 'init-launcher';
 

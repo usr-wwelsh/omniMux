@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { api } from '$lib/api';
-  import { pendingCommits, phaseLabel, type UpdateCommit } from '$lib/updateBanner';
+  import { api } from '#lib/api';
+  import { pendingCommits, phaseLabel, type UpdateCommit } from '#lib/updateBanner';
 
   const CHECK_INTERVAL_MS = 5 * 60 * 1000;
   const PROGRESS_POLL_MS = 1000;

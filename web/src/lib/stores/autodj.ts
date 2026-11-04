@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import { browser } from '$app/environment';
+import { browser } from '$app/env';
 import { subsonic, type Song, type Playlist } from '../subsonic';
 import { api } from '../api';
 import {

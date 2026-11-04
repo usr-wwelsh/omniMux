@@ -1,9 +1,9 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { errorMessage } from '$lib/errors';
-  import { subsonic, type Playlist, type Song, coverArtUrl } from '$lib/subsonic';
-  import { isGuest } from '$lib/auth';
-  import { focusOnMount } from '$lib/focusOnMount';
+  import { errorMessage } from '#lib/errors';
+  import { subsonic, type Playlist, type Song, coverArtUrl } from '#lib/subsonic';
+  import { isGuest } from '#lib/auth';
+  import { focusOnMount } from '#lib/focusOnMount';
 
   type SortBy = 'name' | 'updated' | 'created' | 'tracks' | 'mostPlayed' | 'recentlyPlayed';
   const SORT_OPTIONS: SortBy[] = ['name', 'updated', 'created', 'tracks', 'mostPlayed', 'recentlyPlayed'];

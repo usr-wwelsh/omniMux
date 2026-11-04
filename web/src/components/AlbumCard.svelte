@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { coverArtUrl, type Album, subsonic } from '$lib/subsonic';
-  import { addSongToQueue } from '$lib/stores/player';
+  import { coverArtUrl, type Album, subsonic } from '#lib/subsonic';
+  import { addSongToQueue } from '#lib/stores/player';
 
   interface Props {
     album: Album;

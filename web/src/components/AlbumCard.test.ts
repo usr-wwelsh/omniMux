@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/svelte';
-import type { Album } from '$lib/subsonic';
+import type { Album } from '#lib/subsonic';
 
-vi.mock('$lib/subsonic', () => ({
+vi.mock('#lib/subsonic', () => ({
   coverArtUrl: async (id: string, size: number) => `/api/library/cover/${id}?size=${size}`,
   subsonic: { getAlbum: async () => ({ songs: [] }) },
 }));
 
-vi.mock('$lib/stores/player', () => ({
+vi.mock('#lib/stores/player', () => ({
   addSongToQueue: async () => {},
 }));
 

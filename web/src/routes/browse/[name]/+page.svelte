@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { subsonic, type Artist, type Album } from '$lib/subsonic';
-  import { api, thumbUrl, type YouTubeAlbumResult, type YouTubeResult } from '$lib/api';
+  import { subsonic, type Artist, type Album } from '#lib/subsonic';
+  import { api, thumbUrl, type YouTubeAlbumResult, type YouTubeResult } from '#lib/api';
   import AlbumCard from '../../../components/AlbumCard.svelte';
 
   let name = $derived(decodeURIComponent(page.params.name!));
